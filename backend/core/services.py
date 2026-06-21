@@ -38,7 +38,7 @@ class ConfirmationService:
                 priority="high",
                 source_type="confirmation",
                 excerpt=excerpt,
-                assigned_to=excerpt.created_by,
+                assigned_to=user,
                 due_date=(timezone.now() + timedelta(days=3)).date(),
             )
 

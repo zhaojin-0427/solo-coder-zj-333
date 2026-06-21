@@ -258,7 +258,7 @@
                 </div>
                 <div class="flex gap-2">
                   <el-button
-                    v-if="excerpt.confirmationStatus === 'pending'"
+                    v-if="excerpt.confirmationStatus === 'pending' && excerpt.createdBy?.id !== currentUserId"
                     type="success"
                     size="large"
                     @click="openConfirmDialog(excerpt, 'confirmed')"
@@ -266,7 +266,7 @@
                     ✅ 确认
                   </el-button>
                   <el-button
-                    v-if="excerpt.confirmationStatus === 'pending'"
+                    v-if="excerpt.confirmationStatus === 'pending' && excerpt.createdBy?.id !== currentUserId"
                     type="warning"
                     size="large"
                     @click="openConfirmDialog(excerpt, 'needs_verification')"
@@ -342,11 +342,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { ProgramExcerpt, Topic } from '@/types'
 import { excerptApi, topicApi } from '@/api'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
+const currentUserId = computed(() => userStore.user?.id)
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
