@@ -1,0 +1,462 @@
+<template>
+  <div class="page-container">
+    <h1 class="page-title">
+      <span>📊</span>
+      <span>数据统计</span>
+      <el-button
+        type="primary"
+        size="large"
+        class="ml-auto"
+        :loading="exporting"
+        @click="handleExport"
+      >
+        📥 导出报告
+      </el-button>
+    </h1>
+
+    <div v-if="loading" class="loading-container py-16">
+      <el-loading text="加载中..." size="large" />
+    </div>
+
+    <div v-else>
+      <el-row :gutter="24" class="mb-6">
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number">{{ statistics?.duplicateRate?.total || 0 }}</div>
+            <div class="stat-label">📋 总摘录数</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-blue">{{ statistics?.duplicateRate?.duplicates || 0 }}</div>
+            <div class="stat-label">⚠️ 重复记录</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-yellow">{{ statistics?.confirmationStatus?.pending || 0 }}</div>
+            <div class="stat-label">⏳ 待确认</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-green">{{ statistics?.confirmationStatus?.confirmed || 0 }}</div>
+            <div class="stat-label">✅ 已确认</div>
+          </div>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="24">
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">📻 高频收听栏目 TOP 10</h3>
+            </template>
+            <div ref="barChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">📁 专题内容分布</h3>
+            </template>
+            <div ref="pieChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">🔄 重复记录比例</h3>
+            </template>
+            <div ref="donutChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">📝 待确认摘录分布</h3>
+            </template>
+            <div class="space-y-6 py-4">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-lg font-medium">⏳ 待确认</span>
+                  <span class="text-xl font-bold text-yellow">
+                    {{ statistics?.confirmationStatus?.pending || 0 }}
+                  </span>
+                </div>
+                <div class="w-full h-6 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-all duration-500"
+                    :style="{
+                      width: `${pendingPercent}%`,
+                      backgroundColor: '#FAAD14'
+                    }"
+                  ></div>
+                </div>
+                <p class="text-right text-sm text-gray-500 mt-1">{{ pendingPercent }}%</p>
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-lg font-medium">✅ 已确认</span>
+                  <span class="text-xl font-bold text-green">
+                    {{ statistics?.confirmationStatus?.confirmed || 0 }}
+                  </span>
+                </div>
+                <div class="w-full h-6 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-all duration-500"
+                    :style="{
+                      width: `${confirmedPercent}%`,
+                      backgroundColor: '#52C41A'
+                    }"
+                  ></div>
+                </div>
+                <p class="text-right text-sm text-gray-500 mt-1">{{ confirmedPercent }}%</p>
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-lg font-medium">❌ 已拒绝</span>
+                  <span class="text-xl font-bold text-red-500">
+                    {{ statistics?.confirmationStatus?.rejected || 0 }}
+                  </span>
+                </div>
+                <div class="w-full h-6 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-all duration-500"
+                    :style="{
+                      width: `${rejectedPercent}%`,
+                      backgroundColor: '#F5222D'
+                    }"
+                  ></div>
+                </div>
+                <p class="text-right text-sm text-gray-500 mt-1">{{ rejectedPercent }}%</p>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import * as echarts from 'echarts'
+import type { Statistics } from '@/types'
+import { statisticsApi } from '@/api'
+import { ElMessage } from 'element-plus'
+
+const loading = ref(false)
+const exporting = ref(false)
+const statistics = ref<Statistics | null>(null)
+
+const barChartRef = ref<HTMLElement | null>(null)
+const pieChartRef = ref<HTMLElement | null>(null)
+const donutChartRef = ref<HTMLElement | null>(null)
+
+let barChart: echarts.ECharts | null = null
+let pieChart: echarts.ECharts | null = null
+let donutChart: echarts.ECharts | null = null
+
+const totalConfirmation = computed(() => {
+  if (!statistics.value?.confirmationStatus) return 0
+  const { pending, confirmed, rejected } = statistics.value.confirmationStatus
+  return pending + confirmed + rejected
+})
+
+const pendingPercent = computed(() => {
+  if (totalConfirmation.value === 0) return 0
+  return Math.round((statistics.value?.confirmationStatus?.pending || 0) / totalConfirmation.value * 100)
+})
+
+const confirmedPercent = computed(() => {
+  if (totalConfirmation.value === 0) return 0
+  return Math.round((statistics.value?.confirmationStatus?.confirmed || 0) / totalConfirmation.value * 100)
+})
+
+const rejectedPercent = computed(() => {
+  if (totalConfirmation.value === 0) return 0
+  return Math.round((statistics.value?.confirmationStatus?.rejected || 0) / totalConfirmation.value * 100)
+})
+
+const initBarChart = () => {
+  if (!barChartRef.value || !statistics.value) return
+
+  if (barChart) {
+    barChart.dispose()
+  }
+
+  barChart = echarts.init(barChartRef.value)
+
+  const data = statistics.value.topPrograms || []
+  const names = data.map(item => item.name)
+  const counts = data.map(item => item.count)
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: names,
+      axisLabel: {
+        fontSize: 14,
+        rotate: 30,
+        interval: 0
+      }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: '收听次数',
+        type: 'bar',
+        data: counts,
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#FF9966' },
+            { offset: 1, color: '#FF7A45' }
+          ]),
+          borderRadius: [8, 8, 0, 0]
+        },
+        barWidth: '50%',
+        label: {
+          show: true,
+          position: 'top',
+          fontSize: 14,
+          fontWeight: 'bold'
+        }
+      }
+    ]
+  }
+
+  barChart.setOption(option)
+}
+
+const initPieChart = () => {
+  if (!pieChartRef.value || !statistics.value) return
+
+  if (pieChart) {
+    pieChart.dispose()
+  }
+
+  pieChart = echarts.init(pieChartRef.value)
+
+  const data = statistics.value.topicDistribution || []
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} 条 ({d}%)'
+    },
+    legend: {
+      orient: 'vertical',
+      right: '5%',
+      top: 'center',
+      itemWidth: 20,
+      itemHeight: 20,
+      textStyle: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: '专题分布',
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['35%', '50%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: '#fff',
+          borderWidth: 2
+        },
+        label: {
+          show: false,
+          position: 'center'
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 18,
+            fontWeight: 'bold'
+          }
+        },
+        labelLine: {
+          show: false
+        },
+        data: data.map(item => ({
+          value: item.count,
+          name: item.name,
+          itemStyle: {
+            color: item.color
+          }
+        }))
+      }
+    ]
+  }
+
+  pieChart.setOption(option)
+}
+
+const initDonutChart = () => {
+  if (!donutChartRef.value || !statistics.value) return
+
+  if (donutChart) {
+    donutChart.dispose()
+  }
+
+  donutChart = echarts.init(donutChartRef.value)
+
+  const { total, duplicates, rate } = statistics.value.duplicateRate || { total: 0, duplicates: 0, rate: 0 }
+  const unique = total - duplicates
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} 条 ({d}%)'
+    },
+    legend: {
+      orient: 'horizontal',
+      bottom: '5%',
+      itemWidth: 20,
+      itemHeight: 20,
+      textStyle: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: '重复比例',
+        type: 'pie',
+        radius: ['50%', '75%'],
+        center: ['50%', '45%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: '#fff',
+          borderWidth: 3
+        },
+        label: {
+          show: true,
+          position: 'center',
+          formatter: `{a|重复率}\n{b|${(rate * 100).toFixed(1)}%}`,
+          rich: {
+            a: {
+              fontSize: 16,
+              color: '#666',
+              padding: [0, 0, 8, 0]
+            },
+            b: {
+              fontSize: 32,
+              fontWeight: 'bold',
+              color: '#FF7A45'
+            }
+          }
+        },
+        emphasis: {
+          label: {
+            show: true
+          }
+        },
+        labelLine: {
+          show: false
+        },
+        data: [
+          {
+            value: unique,
+            name: '唯一记录',
+            itemStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#66BB6A' },
+                { offset: 1, color: '#52C41A' }
+              ])
+            }
+          },
+          {
+            value: duplicates,
+            name: '重复记录',
+            itemStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#FF9966' },
+                { offset: 1, color: '#FF7A45' }
+              ])
+            }
+          }
+        ]
+      }
+    ]
+  }
+
+  donutChart.setOption(option)
+}
+
+const initCharts = () => {
+  nextTick(() => {
+    initBarChart()
+    initPieChart()
+    initDonutChart()
+  })
+}
+
+const loadStatistics = async () => {
+  loading.value = true
+  try {
+    statistics.value = await statisticsApi.getStatistics()
+    initCharts()
+  } catch (error) {
+    console.error('Failed to load statistics:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleExport = () => {
+  ElMessage.info('导出功能开发中...')
+}
+
+const handleResize = () => {
+  barChart?.resize()
+  pieChart?.resize()
+  donutChart?.resize()
+}
+
+watch(
+  () => statistics.value,
+  () => {
+    if (statistics.value) {
+      initCharts()
+    }
+  }
+)
+
+onMounted(() => {
+  loadStatistics()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  barChart?.dispose()
+  pieChart?.dispose()
+  donutChart?.dispose()
+})
+</script>
