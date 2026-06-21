@@ -17,8 +17,9 @@ from .serializers import (
     CommentSerializer,
     FollowUpItemSerializer,
     MergeDuplicateSerializer,
+    ConfirmExcerptSerializer,
 )
-from .services import StatisticsService, ProgramExcerptService
+from .services import StatisticsService, ProgramExcerptService, ConfirmationService
 
 
 class TopicViewSet(viewsets.ModelViewSet):
@@ -62,6 +63,10 @@ class ProgramExcerptViewSet(viewsets.ModelViewSet):
         include_duplicates = self.request.query_params.get("include_duplicates", "false").lower() == "true"
         if not include_duplicates:
             queryset = queryset.filter(is_duplicate=False)
+
+        confirmation_status = self.request.query_params.get("confirmation_status")
+        if confirmation_status:
+            queryset = queryset.filter(confirmation_status=confirmation_status)
 
         return queryset.order_by("-date", "-created_at")
 
@@ -126,6 +131,30 @@ class ProgramExcerptViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             serializer.save(excerpt=excerpt, user=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="confirm")
+    def confirm(self, request, pk=None):
+        excerpt = self.get_object()
+        serializer = ConfirmExcerptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            updated_excerpt, follow_up_item = ConfirmationService.confirm_excerpt(
+                excerpt_id=excerpt.id,
+                user=request.user,
+                confirmation_status=serializer.validated_data["confirmation_status"],
+                confirmation_note=serializer.validated_data.get("confirmation_note", ""),
+                generate_followup=serializer.validated_data.get("generate_followup", False),
+            )
+            result = ProgramExcerptDetailSerializer(updated_excerpt).data
+            if follow_up_item:
+                result["generated_followup"] = FollowUpItemSerializer(follow_up_item).data
+            return Response(result, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class CommentViewSet(viewsets.ModelViewSet):
@@ -225,6 +254,14 @@ class FamilyFeedView(views.APIView):
                 "type": "excerpt",
                 "data": ProgramExcerptListSerializer(excerpt).data,
             }
+            if excerpt.confirmation_status != "pending" and excerpt.confirmed_by:
+                item["confirmation_info"] = {
+                    "confirmed_by_name": excerpt.confirmed_by.first_name or excerpt.confirmed_by.username,
+                    "confirmed_at": excerpt.confirmed_at,
+                    "confirmation_note": excerpt.confirmation_note or "",
+                    "confirmation_status": excerpt.confirmation_status,
+                    "confirmation_status_display": excerpt.get_confirmation_status_display(),
+                }
             result.append(item)
 
         return Response(result)

@@ -138,6 +138,20 @@
               </el-select>
             </el-form-item>
 
+            <el-form-item label="确认状态筛选">
+              <el-select
+                v-model="filterConfirmationStatus"
+                placeholder="全部状态"
+                style="width: 100%"
+                clearable
+                @change="loadExcerpts"
+              >
+                <el-option label="⏳ 待确认" value="pending" />
+                <el-option label="✅ 已确认" value="confirmed" />
+                <el-option label="❗ 需核实" value="needs_verification" />
+              </el-select>
+            </el-form-item>
+
             <el-form-item label="包含重复记录">
               <el-switch
                 v-model="includeDuplicates"
@@ -178,6 +192,13 @@
                   >
                     ⚠️ 重复记录
                   </span>
+                  <el-tag
+                    :type="confirmationTagType(excerpt.confirmationStatus)"
+                    size="large"
+                    effect="light"
+                  >
+                    {{ confirmationLabel(excerpt.confirmationStatus) }}
+                  </el-tag>
                 </div>
                 <el-tag
                   v-if="excerpt.topic"
@@ -211,6 +232,24 @@
                 <p class="text-lg text-gray-800 leading-relaxed">{{ excerpt.elderlyNotes }}</p>
               </div>
 
+              <div
+                v-if="excerpt.confirmationStatus !== 'pending' && excerpt.confirmedByName"
+                class="p-3 rounded-lg border-l-4"
+                :class="excerpt.confirmationStatus === 'confirmed' ? 'bg-green-50 border-green-400' : 'bg-orange-50 border-orange-400'"
+              >
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="font-medium text-sm">
+                    {{ excerpt.confirmationStatus === 'confirmed' ? '✅ 已确认' : '❗ 需核实' }}
+                  </span>
+                  <span class="text-sm text-gray-500">
+                    由 {{ excerpt.confirmedByName }} 确认于 {{ formatTime(excerpt.confirmedAt!) }}
+                  </span>
+                </div>
+                <p v-if="excerpt.confirmationNote" class="text-sm text-gray-600">
+                  备注：{{ excerpt.confirmationNote }}
+                </p>
+              </div>
+
               <el-divider class="my-4" />
 
               <div class="flex items-center justify-between">
@@ -218,6 +257,22 @@
                   创建于 {{ formatTime(excerpt.createdAt) }}
                 </div>
                 <div class="flex gap-2">
+                  <el-button
+                    v-if="excerpt.confirmationStatus === 'pending'"
+                    type="success"
+                    size="large"
+                    @click="openConfirmDialog(excerpt, 'confirmed')"
+                  >
+                    ✅ 确认
+                  </el-button>
+                  <el-button
+                    v-if="excerpt.confirmationStatus === 'pending'"
+                    type="warning"
+                    size="large"
+                    @click="openConfirmDialog(excerpt, 'needs_verification')"
+                  >
+                    ❗ 需核实
+                  </el-button>
                   <el-button size="large" @click="handleEdit(excerpt)">
                     ✏️ 编辑
                   </el-button>
@@ -236,6 +291,53 @@
         </div>
       </el-col>
     </el-row>
+
+    <el-dialog
+      v-model="confirmDialogVisible"
+      :title="confirmAction === 'confirmed' ? '✅ 确认摘录' : '❗ 标记需核实'"
+      width="500px"
+      size="large"
+    >
+      <div class="space-y-4">
+        <div v-if="confirmingExcerpt" class="p-4 bg-orange-50 rounded-xl">
+          <p class="font-semibold text-lg">{{ confirmingExcerpt.programName }}</p>
+          <p class="text-sm text-gray-500 mt-1 line-clamp-2">{{ confirmingExcerpt.contentSummary }}</p>
+        </div>
+
+        <el-form label-position="top" size="large">
+          <el-form-item :label="confirmAction === 'confirmed' ? '确认备注（可选）' : '核实备注（必填）'">
+            <el-input
+              v-model="confirmNote"
+              type="textarea"
+              :rows="3"
+              :placeholder="confirmAction === 'confirmed' ? '可填写确认备注...' : '请填写需要核实的原因或说明...'"
+            />
+          </el-form-item>
+        </el-form>
+
+        <el-checkbox
+          v-if="confirmAction === 'needs_verification'"
+          v-model="generateFollowup"
+        >
+          一键生成关联待跟进事项
+        </el-checkbox>
+      </div>
+
+      <template #footer>
+        <el-button size="large" @click="confirmDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          :type="confirmAction === 'confirmed' ? 'success' : 'warning'"
+          size="large"
+          :loading="confirming"
+          :disabled="confirmAction === 'needs_verification' && !confirmNote.trim()"
+          @click="handleConfirm"
+        >
+          {{ confirmAction === 'confirmed' ? '确认' : '标记需核实' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -257,7 +359,15 @@ const topics = ref<Topic[]>([])
 
 const filterDate = ref<string>('')
 const filterTopicId = ref<number | null>(null)
+const filterConfirmationStatus = ref<string>('')
 const includeDuplicates = ref(false)
+
+const confirmDialogVisible = ref(false)
+const confirmingExcerpt = ref<ProgramExcerpt | null>(null)
+const confirmAction = ref<'confirmed' | 'needs_verification'>('confirmed')
+const confirmNote = ref('')
+const generateFollowup = ref(true)
+const confirming = ref(false)
 
 const today = new Date().toISOString().split('T')[0]
 
@@ -291,7 +401,7 @@ const disabledDate = (time: Date) => {
   return time.getTime() > Date.now()
 }
 
-const formatTime = (timeStr: string) => {
+const formatTime = (timeStr: string | null) => {
   if (!timeStr) return ''
   const date = new Date(timeStr)
   return date.toLocaleString('zh-CN', {
@@ -301,6 +411,24 @@ const formatTime = (timeStr: string) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const confirmationTagType = (status: string) => {
+  const map: Record<string, string> = {
+    pending: 'warning',
+    confirmed: 'success',
+    needs_verification: 'danger'
+  }
+  return map[status] || 'info'
+}
+
+const confirmationLabel = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '⏳ 待确认',
+    confirmed: '✅ 已确认',
+    needs_verification: '❗ 需核实'
+  }
+  return map[status] || status
 }
 
 const loadTopics = async () => {
@@ -317,7 +445,8 @@ const loadExcerpts = async () => {
     excerpts.value = await excerptApi.getList({
       date: filterDate.value || undefined,
       topicId: filterTopicId.value || undefined,
-      includeDuplicates: includeDuplicates.value
+      includeDuplicates: includeDuplicates.value,
+      confirmationStatus: filterConfirmationStatus.value || undefined
     })
   } catch (error) {
     console.error('Failed to load excerpts:', error)
@@ -386,6 +515,41 @@ const handleDelete = async (excerpt: ProgramExcerpt) => {
     }
   } finally {
     deletingId.value = null
+  }
+}
+
+const openConfirmDialog = (excerpt: ProgramExcerpt, action: 'confirmed' | 'needs_verification') => {
+  confirmingExcerpt.value = excerpt
+  confirmAction.value = action
+  confirmNote.value = ''
+  generateFollowup.value = true
+  confirmDialogVisible.value = true
+}
+
+const handleConfirm = async () => {
+  if (!confirmingExcerpt.value) return
+
+  if (confirmAction.value === 'needs_verification' && !confirmNote.value.trim()) {
+    ElMessage.warning('标记为需核实时必须填写备注')
+    return
+  }
+
+  confirming.value = true
+  try {
+    await excerptApi.confirm(
+      confirmingExcerpt.value.id,
+      confirmAction.value,
+      confirmNote.value.trim(),
+      generateFollowup.value
+    )
+    ElMessage.success(confirmAction.value === 'confirmed' ? '已确认！' : '已标记为需核实！')
+    confirmDialogVisible.value = false
+    loadExcerpts()
+  } catch (error: any) {
+    const msg = error?.response?.data?.error || '确认操作失败'
+    ElMessage.error(msg)
+  } finally {
+    confirming.value = false
   }
 }
 

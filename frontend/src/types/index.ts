@@ -33,6 +33,11 @@ export interface ProgramExcerpt {
   duplicateOf: number | null
   createdBy: UserInfo
   createdByName: string
+  confirmationStatus: 'pending' | 'confirmed' | 'needs_verification'
+  confirmationStatusDisplay: string
+  confirmedByName: string | null
+  confirmedAt: string | null
+  confirmationNote: string | null
   commentCount: number
   versions?: Version[]
   comments?: Comment[]
@@ -82,6 +87,8 @@ export interface FollowUpItem {
   statusDisplay: string
   priority: 'high' | 'medium' | 'low'
   priorityDisplay: string
+  sourceType: 'manual' | 'confirmation'
+  sourceTypeDisplay: string
   excerpt: ProgramExcerpt | null
   excerptId?: number | null
   assignedTo: UserInfo | null
@@ -105,7 +112,9 @@ export interface Statistics {
   unconfirmedExcerpts: number
   pendingFollowups: number
   totalExcerpts: number
-  confirmationStatus?: { pending: number; confirmed: number; rejected: number }
+  confirmationStatus: { pending: number; confirmed: number; needsVerification: number }
+  pendingConfirmationCount: number
+  confirmationTrend7d: { date: string; count: number }[]
 }
 
 export interface User {
@@ -142,4 +151,13 @@ export interface ExcerptFilterParams extends PaginationParams {
   topicId?: number
   date?: string
   includeDuplicates?: boolean
+  confirmationStatus?: string
+}
+
+export interface ConfirmationInfo {
+  confirmedByName: string
+  confirmedAt: string
+  confirmationNote: string
+  confirmationStatus: string
+  confirmationStatusDisplay: string
 }

@@ -5,6 +5,54 @@ from datetime import timedelta
 from .models import ProgramExcerpt, Version, Topic, FollowUpItem
 
 
+class ConfirmationService:
+    @staticmethod
+    @transaction.atomic
+    def confirm_excerpt(excerpt_id, user, confirmation_status, confirmation_note="", generate_followup=False):
+        try:
+            excerpt = ProgramExcerpt.objects.get(id=excerpt_id)
+        except ProgramExcerpt.DoesNotExist:
+            raise ValueError("指定的节目摘录不存在")
+
+        if excerpt.created_by_id == user.id:
+            raise ValueError("创建者不能确认自己的摘录")
+
+        if excerpt.confirmation_status != "pending":
+            raise ValueError("只有待确认状态的摘录才能进行确认操作")
+
+        if confirmation_status == "needs_verification" and not confirmation_note:
+            raise ValueError("标记为需核实时必须填写确认备注")
+
+        excerpt.confirmation_status = confirmation_status
+        excerpt.confirmed_by = user
+        excerpt.confirmed_at = timezone.now()
+        excerpt.confirmation_note = confirmation_note
+        excerpt.save()
+
+        follow_up_item = None
+        if confirmation_status == "needs_verification" and generate_followup:
+            follow_up_item = FollowUpItem.objects.create(
+                title=f"核实摘录：{excerpt.program_name}",
+                description=f"需核实节目摘录「{excerpt.program_name}」（{excerpt.date}）的内容。\n核实备注：{confirmation_note}",
+                status="pending",
+                priority="high",
+                source_type="confirmation",
+                excerpt=excerpt,
+                assigned_to=excerpt.created_by,
+                due_date=(timezone.now() + timedelta(days=3)).date(),
+            )
+
+        return excerpt, follow_up_item
+
+    @staticmethod
+    def can_confirm(excerpt, user):
+        if excerpt.created_by_id == user.id:
+            return False
+        if excerpt.confirmation_status != "pending":
+            return False
+        return True
+
+
 class StatisticsService:
     @staticmethod
     def get_statistics(family_group_id=None):
@@ -17,10 +65,13 @@ class StatisticsService:
             return {
                 "popular_programs": [],
                 "topic_distribution": [],
-                "duplicate_ratio": 0,
+                "duplicate_ratio": {"total": 0, "duplicates": 0, "rate": 0},
                 "unconfirmed_excerpts": 0,
                 "pending_followups": 0,
                 "total_excerpts": 0,
+                "confirmation_status": {"pending": 0, "confirmed": 0, "needs_verification": 0},
+                "pending_confirmation_count": 0,
+                "confirmation_trend_7d": [],
             }
 
         popular_programs = (
@@ -42,7 +93,7 @@ class StatisticsService:
             })
 
         duplicate_count = base_query.filter(is_duplicate=True).count()
-        duplicate_ratio = round(duplicate_count / total_count * 100, 2) if total_count > 0 else 0
+        duplicate_ratio_val = round(duplicate_count / total_count * 100, 2) if total_count > 0 else 0
 
         unconfirmed_excerpts = base_query.filter(
             Q(is_duplicate=True) & Q(duplicate_of__isnull=True)
@@ -53,16 +104,44 @@ class StatisticsService:
             followup_query = followup_query.filter(assigned_to__family_group_id=family_group_id)
         pending_followups = followup_query.filter(status="pending").count()
 
+        confirmation_status = {
+            "pending": base_query.filter(confirmation_status="pending").count(),
+            "confirmed": base_query.filter(confirmation_status="confirmed").count(),
+            "needs_verification": base_query.filter(confirmation_status="needs_verification").count(),
+        }
+
+        pending_confirmation_count = confirmation_status["pending"]
+
+        confirmation_trend_7d = []
+        today = timezone.now().date()
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            day_count = base_query.filter(
+                confirmation_status="pending",
+                created_at__date=day,
+            ).count()
+            confirmation_trend_7d.append({
+                "date": day.strftime("%m-%d"),
+                "count": day_count,
+            })
+
         return {
             "popular_programs": [
                 {"program_name": item["program_name"], "count": item["count"]}
                 for item in popular_programs
             ],
             "topic_distribution": topic_distribution,
-            "duplicate_ratio": duplicate_ratio,
+            "duplicate_ratio": {
+                "total": total_count,
+                "duplicates": duplicate_count,
+                "rate": duplicate_ratio_val / 100 if total_count > 0 else 0,
+            },
             "unconfirmed_excerpts": unconfirmed_excerpts,
             "pending_followups": pending_followups,
             "total_excerpts": total_count,
+            "confirmation_status": confirmation_status,
+            "pending_confirmation_count": pending_confirmation_count,
+            "confirmation_trend_7d": confirmation_trend_7d,
         }
 
 

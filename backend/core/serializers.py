@@ -66,6 +66,9 @@ class ProgramExcerptDetailSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     topic_name = serializers.SerializerMethodField(read_only=True)
     created_by_name = serializers.SerializerMethodField(read_only=True)
+    confirmed_by = UserSerializer(read_only=True)
+    confirmed_by_name = serializers.SerializerMethodField(read_only=True)
+    confirmation_status_display = serializers.CharField(source="get_confirmation_status_display", read_only=True)
 
     class Meta:
         model = ProgramExcerpt
@@ -83,18 +86,29 @@ class ProgramExcerptDetailSerializer(serializers.ModelSerializer):
             "duplicate_of",
             "created_by",
             "created_by_name",
+            "confirmation_status",
+            "confirmation_status_display",
+            "confirmed_by",
+            "confirmed_by_name",
+            "confirmed_at",
+            "confirmation_note",
             "versions",
             "comments",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at", "created_by", "versions", "comments")
+        read_only_fields = ("id", "created_at", "updated_at", "created_by", "versions", "comments", "confirmation_status", "confirmed_by", "confirmed_at", "confirmation_note")
 
     def get_topic_name(self, obj):
         return obj.topic.name if obj.topic else None
 
     def get_created_by_name(self, obj):
         return obj.created_by.first_name or obj.created_by.username
+
+    def get_confirmed_by_name(self, obj):
+        if obj.confirmed_by:
+            return obj.confirmed_by.first_name or obj.confirmed_by.username
+        return None
 
 
 class ProgramExcerptListSerializer(serializers.ModelSerializer):
@@ -103,6 +117,8 @@ class ProgramExcerptListSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField(read_only=True)
     topic_name = serializers.SerializerMethodField(read_only=True)
     created_by_name = serializers.SerializerMethodField(read_only=True)
+    confirmed_by_name = serializers.SerializerMethodField(read_only=True)
+    confirmation_status_display = serializers.CharField(source="get_confirmation_status_display", read_only=True)
 
     class Meta:
         model = ProgramExcerpt
@@ -118,6 +134,11 @@ class ProgramExcerptListSerializer(serializers.ModelSerializer):
             "is_duplicate",
             "created_by",
             "created_by_name",
+            "confirmation_status",
+            "confirmation_status_display",
+            "confirmed_by_name",
+            "confirmed_at",
+            "confirmation_note",
             "comment_count",
             "created_at",
             "updated_at",
@@ -133,6 +154,11 @@ class ProgramExcerptListSerializer(serializers.ModelSerializer):
     def get_created_by_name(self, obj):
         return obj.created_by.first_name or obj.created_by.username
 
+    def get_confirmed_by_name(self, obj):
+        if obj.confirmed_by:
+            return obj.confirmed_by.first_name or obj.confirmed_by.username
+        return None
+
 
 class FollowUpItemSerializer(serializers.ModelSerializer):
     excerpt = ProgramExcerptListSerializer(read_only=True)
@@ -141,6 +167,7 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
     assigned_to_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     priority_display = serializers.CharField(source="get_priority_display", read_only=True)
+    source_type_display = serializers.CharField(source="get_source_type_display", read_only=True)
     assigned_to_name = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -153,6 +180,8 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
             "status_display",
             "priority",
             "priority_display",
+            "source_type",
+            "source_type_display",
             "excerpt",
             "excerpt_id",
             "assigned_to",
@@ -161,7 +190,7 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
             "due_date",
             "created_at",
         )
-        read_only_fields = ("id", "created_at", "excerpt", "assigned_to")
+        read_only_fields = ("id", "created_at", "excerpt", "assigned_to", "source_type")
 
     def get_assigned_to_name(self, obj):
         if obj.assigned_to:
@@ -172,3 +201,9 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
 class MergeDuplicateSerializer(serializers.Serializer):
     duplicate_id = serializers.IntegerField()
     merge_note = serializers.CharField(required=False, allow_blank=True)
+
+
+class ConfirmExcerptSerializer(serializers.Serializer):
+    confirmation_status = serializers.ChoiceField(choices=["confirmed", "needs_verification"])
+    confirmation_note = serializers.CharField(required=False, allow_blank=True)
+    generate_followup = serializers.BooleanField(required=False, default=False)

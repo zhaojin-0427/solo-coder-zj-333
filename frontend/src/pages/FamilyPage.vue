@@ -74,6 +74,13 @@
                     </div>
                     <div class="flex items-center gap-2">
                       <el-tag
+                        :type="confirmationTagType(item.data.confirmationStatus)"
+                        size="large"
+                        effect="light"
+                      >
+                        {{ confirmationLabel(item.data.confirmationStatus) }}
+                      </el-tag>
+                      <el-tag
                         v-if="item.data.topic"
                         :style="{ backgroundColor: item.data.topic.color + '20', color: item.data.topic.color }"
                         size="large"
@@ -104,6 +111,27 @@
                       <span class="font-semibold text-primary">老人补充</span>
                     </div>
                     <p class="text-lg text-gray-800">{{ item.data.elderlyNotes }}</p>
+                  </div>
+
+                  <div
+                    v-if="item.confirmationInfo"
+                    class="p-3 rounded-lg border-l-4"
+                    :class="item.confirmationInfo.confirmationStatus === 'confirmed' ? 'bg-green-50 border-green-400' : 'bg-orange-50 border-orange-400'"
+                  >
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="font-medium text-sm">
+                        {{ item.confirmationInfo.confirmationStatus === 'confirmed' ? '✅ 已确认' : '❗ 需核实' }}
+                      </span>
+                      <span class="text-sm text-gray-500">
+                        确认人：{{ item.confirmationInfo.confirmedByName }}
+                      </span>
+                      <span class="text-sm text-gray-400">
+                        · {{ formatTime(item.confirmationInfo.confirmedAt) }}
+                      </span>
+                    </div>
+                    <p v-if="item.confirmationInfo.confirmationNote" class="text-sm text-gray-600 mt-1">
+                      备注：{{ item.confirmationInfo.confirmationNote.length > 50 ? item.confirmationInfo.confirmationNote.slice(0, 50) + '...' : item.confirmationInfo.confirmationNote }}
+                    </p>
                   </div>
 
                   <el-divider class="my-3" />
@@ -205,7 +233,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { FamilyMember, ProgramExcerpt, Comment } from '@/types'
+import type { FamilyMember, ProgramExcerpt, Comment, ConfirmationInfo } from '@/types'
 import { familyApi, excerptApi } from '@/api'
 
 const loadingMembers = ref(false)
@@ -213,7 +241,7 @@ const loadingFeed = ref(false)
 const submittingComment = ref(false)
 
 const members = ref<FamilyMember[]>([])
-const feedItems = ref<{ type: string; data: ProgramExcerpt }[]>([])
+const feedItems = ref<{ type: string; data: ProgramExcerpt; confirmationInfo?: ConfirmationInfo }[]>([])
 
 const commentsMap = reactive<Record<number, Comment[]>>({})
 const loadingComments = reactive<Record<number, boolean>>({})
@@ -246,6 +274,24 @@ const formatTime = (timeStr: string) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const confirmationTagType = (status: string) => {
+  const map: Record<string, string> = {
+    pending: 'warning',
+    confirmed: 'success',
+    needs_verification: 'danger'
+  }
+  return map[status] || 'info'
+}
+
+const confirmationLabel = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '⏳ 待确认',
+    confirmed: '✅ 已确认',
+    needs_verification: '❗ 需核实'
+  }
+  return map[status] || status
 }
 
 const getMemberAvatar = (userId?: number) => {

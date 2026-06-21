@@ -69,6 +69,14 @@
               >
                 {{ statusText(item.status) }}
               </el-tag>
+              <el-tag
+                v-if="item.sourceType === 'confirmation'"
+                type="warning"
+                size="large"
+                effect="light"
+              >
+                🔗 确认催办
+              </el-tag>
             </div>
 
             <p class="text-base text-gray-700 mb-3">{{ item.description }}</p>
@@ -87,11 +95,27 @@
 
             <div
               v-if="item.excerpt"
-              class="mt-4 p-4 bg-orange-50 rounded-xl border-l-4 border-primary"
+              class="mt-4 p-4 rounded-xl border-l-4"
+              :class="item.sourceType === 'confirmation' ? 'bg-orange-50 border-orange-400' : 'bg-orange-50 border-primary'"
             >
-              <p class="text-sm text-gray-500 mb-1">关联节目：</p>
+              <div class="flex items-center gap-2 mb-1">
+                <p class="text-sm text-gray-500">
+                  {{ item.sourceType === 'confirmation' ? '🔗 来源摘录（确认催办）' : '关联节目' }}
+                </p>
+              </div>
               <p class="text-base font-medium">📻 {{ item.excerpt.programName }}</p>
               <p class="text-sm text-gray-600 mt-1 line-clamp-2">{{ item.excerpt.contentSummary }}</p>
+              <div class="flex items-center gap-2 mt-2">
+                <span class="text-sm text-gray-500">📅 {{ item.excerpt.date }}</span>
+                <span class="text-sm text-gray-500">⏰ {{ item.excerpt.timeSlot }}</span>
+                <el-tag
+                  :type="confirmationTagType(item.excerpt.confirmationStatus)"
+                  size="small"
+                  effect="light"
+                >
+                  {{ confirmationLabel(item.excerpt.confirmationStatus) }}
+                </el-tag>
+              </div>
             </div>
           </div>
 
@@ -304,6 +328,24 @@ const statusText = (status: string) => {
     pending: '⏳ 待处理',
     in_progress: '🔄 进行中',
     completed: '✅ 已完成'
+  }
+  return map[status] || status
+}
+
+const confirmationTagType = (status: string) => {
+  const map: Record<string, string> = {
+    pending: 'warning',
+    confirmed: 'success',
+    needs_verification: 'danger'
+  }
+  return map[status] || 'info'
+}
+
+const confirmationLabel = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '⏳ 待确认',
+    confirmed: '✅ 已确认',
+    needs_verification: '❗ 需核实'
   }
   return map[status] || status
 }

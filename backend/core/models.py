@@ -20,6 +20,12 @@ class Topic(models.Model):
 
 
 class ProgramExcerpt(models.Model):
+    CONFIRMATION_STATUS_CHOICES = (
+        ("pending", "待确认"),
+        ("confirmed", "已确认"),
+        ("needs_verification", "需核实"),
+    )
+
     id = models.AutoField(primary_key=True)
     date = models.DateField(verbose_name="日期")
     program_name = models.CharField(max_length=200, verbose_name="节目名称")
@@ -49,6 +55,22 @@ class ProgramExcerpt(models.Model):
         related_name="created_excerpts",
         verbose_name="创建人"
     )
+    confirmation_status = models.CharField(
+        max_length=20,
+        choices=CONFIRMATION_STATUS_CHOICES,
+        default="pending",
+        verbose_name="确认状态"
+    )
+    confirmed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="confirmed_excerpts",
+        verbose_name="确认人"
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True, verbose_name="确认时间")
+    confirmation_note = models.TextField(blank=True, null=True, verbose_name="确认备注")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -130,11 +152,17 @@ class FollowUpItem(models.Model):
         ("low", "低"),
     )
 
+    SOURCE_TYPE_CHOICES = (
+        ("manual", "手动创建"),
+        ("confirmation", "确认催办"),
+    )
+
     id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=200, verbose_name="事项标题")
     description = models.TextField(blank=True, null=True, verbose_name="事项描述")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", verbose_name="状态")
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="medium", verbose_name="优先级")
+    source_type = models.CharField(max_length=20, choices=SOURCE_TYPE_CHOICES, default="manual", verbose_name="来源类型")
     excerpt = models.ForeignKey(
         ProgramExcerpt,
         on_delete=models.CASCADE,

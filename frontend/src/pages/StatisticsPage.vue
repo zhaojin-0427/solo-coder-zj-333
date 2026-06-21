@@ -77,7 +77,7 @@
         <el-col :xs="24" :lg="12" class="mb-6">
           <el-card class="shadow-card" :body-style="{ padding: '24px' }">
             <template #header>
-              <h3 class="text-xl font-semibold">📝 待确认摘录分布</h3>
+              <h3 class="text-xl font-semibold">📝 确认状态分布</h3>
             </template>
             <div class="space-y-6 py-4">
               <div>
@@ -120,23 +120,41 @@
 
               <div>
                 <div class="flex items-center justify-between mb-2">
-                  <span class="text-lg font-medium">❌ 已拒绝</span>
+                  <span class="text-lg font-medium">❗ 需核实</span>
                   <span class="text-xl font-bold text-red-500">
-                    {{ statistics?.confirmationStatus?.rejected || 0 }}
+                    {{ statistics?.confirmationStatus?.needsVerification || 0 }}
                   </span>
                 </div>
                 <div class="w-full h-6 bg-gray-100 rounded-full overflow-hidden">
                   <div
                     class="h-full rounded-full transition-all duration-500"
                     :style="{
-                      width: `${rejectedPercent}%`,
+                      width: `${needsVerificationPercent}%`,
                       backgroundColor: '#F5222D'
                     }"
                   ></div>
                 </div>
-                <p class="text-right text-sm text-gray-500 mt-1">{{ rejectedPercent }}%</p>
+                <p class="text-right text-sm text-gray-500 mt-1">{{ needsVerificationPercent }}%</p>
               </div>
             </div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">📈 近 7 天待确认趋势</h3>
+            </template>
+            <div ref="trendChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">📊 确认状态总览</h3>
+            </template>
+            <div ref="confirmationPieRef" class="chart-container"></div>
           </el-card>
         </el-col>
       </el-row>
@@ -158,15 +176,19 @@ const statistics = ref<Statistics | null>(null)
 const barChartRef = ref<HTMLElement | null>(null)
 const pieChartRef = ref<HTMLElement | null>(null)
 const donutChartRef = ref<HTMLElement | null>(null)
+const trendChartRef = ref<HTMLElement | null>(null)
+const confirmationPieRef = ref<HTMLElement | null>(null)
 
 let barChart: echarts.ECharts | null = null
 let pieChart: echarts.ECharts | null = null
 let donutChart: echarts.ECharts | null = null
+let trendChart: echarts.ECharts | null = null
+let confirmationPie: echarts.ECharts | null = null
 
 const totalConfirmation = computed(() => {
   if (!statistics.value?.confirmationStatus) return 0
-  const { pending, confirmed, rejected } = statistics.value.confirmationStatus
-  return pending + confirmed + rejected
+  const { pending, confirmed, needsVerification } = statistics.value.confirmationStatus
+  return pending + confirmed + needsVerification
 })
 
 const pendingPercent = computed(() => {
@@ -179,9 +201,9 @@ const confirmedPercent = computed(() => {
   return Math.round((statistics.value?.confirmationStatus?.confirmed || 0) / totalConfirmation.value * 100)
 })
 
-const rejectedPercent = computed(() => {
+const needsVerificationPercent = computed(() => {
   if (totalConfirmation.value === 0) return 0
-  return Math.round((statistics.value?.confirmationStatus?.rejected || 0) / totalConfirmation.value * 100)
+  return Math.round((statistics.value?.confirmationStatus?.needsVerification || 0) / totalConfirmation.value * 100)
 })
 
 const initBarChart = () => {
@@ -409,11 +431,166 @@ const initDonutChart = () => {
   donutChart.setOption(option)
 }
 
+const initTrendChart = () => {
+  if (!trendChartRef.value || !statistics.value) return
+
+  if (trendChart) {
+    trendChart.dispose()
+  }
+
+  trendChart = echarts.init(trendChartRef.value)
+
+  const trendData = statistics.value.confirmationTrend7d || []
+  const dates = trendData.map(item => item.date)
+  const counts = trendData.map(item => item.count)
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'axis',
+      formatter: '{b}<br/>待确认摘录：{c} 条'
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLabel: {
+        fontSize: 14
+      }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        fontSize: 14
+      },
+      minInterval: 1
+    },
+    series: [
+      {
+        name: '待确认摘录',
+        type: 'line',
+        data: counts,
+        smooth: true,
+        itemStyle: {
+          color: '#FAAD14'
+        },
+        lineStyle: {
+          width: 3,
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: '#FAAD14' },
+            { offset: 1, color: '#FF7A45' }
+          ])
+        },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(250, 173, 20, 0.3)' },
+            { offset: 1, color: 'rgba(250, 173, 20, 0.05)' }
+          ])
+        },
+        label: {
+          show: true,
+          position: 'top',
+          fontSize: 14,
+          fontWeight: 'bold',
+          color: '#FAAD14'
+        }
+      }
+    ]
+  }
+
+  trendChart.setOption(option)
+}
+
+const initConfirmationPie = () => {
+  if (!confirmationPieRef.value || !statistics.value) return
+
+  if (confirmationPie) {
+    confirmationPie.dispose()
+  }
+
+  confirmationPie = echarts.init(confirmationPieRef.value)
+
+  const cs = statistics.value.confirmationStatus || { pending: 0, confirmed: 0, needsVerification: 0 }
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} 条 ({d}%)'
+    },
+    legend: {
+      orient: 'horizontal',
+      bottom: '5%',
+      itemWidth: 20,
+      itemHeight: 20,
+      textStyle: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: '确认状态',
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['50%', '45%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: '#fff',
+          borderWidth: 2
+        },
+        label: {
+          show: true,
+          formatter: '{b}\n{c} 条',
+          fontSize: 14
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 16,
+            fontWeight: 'bold'
+          }
+        },
+        data: [
+          {
+            value: cs.pending,
+            name: '待确认',
+            itemStyle: {
+              color: '#FAAD14'
+            }
+          },
+          {
+            value: cs.confirmed,
+            name: '已确认',
+            itemStyle: {
+              color: '#52C41A'
+            }
+          },
+          {
+            value: cs.needsVerification,
+            name: '需核实',
+            itemStyle: {
+              color: '#F5222D'
+            }
+          }
+        ]
+      }
+    ]
+  }
+
+  confirmationPie.setOption(option)
+}
+
 const initCharts = () => {
   nextTick(() => {
     initBarChart()
     initPieChart()
     initDonutChart()
+    initTrendChart()
+    initConfirmationPie()
   })
 }
 
@@ -437,6 +614,8 @@ const handleResize = () => {
   barChart?.resize()
   pieChart?.resize()
   donutChart?.resize()
+  trendChart?.resize()
+  confirmationPie?.resize()
 }
 
 watch(
@@ -458,5 +637,7 @@ onUnmounted(() => {
   barChart?.dispose()
   pieChart?.dispose()
   donutChart?.dispose()
+  trendChart?.dispose()
+  confirmationPie?.dispose()
 })
 </script>

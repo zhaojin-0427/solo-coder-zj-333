@@ -11,7 +11,8 @@ import type {
   Comment,
   Statistics,
   LoginResponse,
-  ExcerptFilterParams
+  ExcerptFilterParams,
+  ConfirmationInfo
 } from '@/types'
 
 const baseURL = 'http://localhost:9422/api'
@@ -98,6 +99,9 @@ export const excerptApi = {
     if (params?.includeDuplicates !== undefined) {
       queryParams.append('include_duplicates', params.includeDuplicates.toString())
     }
+    if (params?.confirmationStatus) {
+      queryParams.append('confirmation_status', params.confirmationStatus)
+    }
     return api.get(`/excerpts/${queryParams.toString() ? '?' + queryParams.toString() : ''}`)
   },
 
@@ -140,7 +144,14 @@ export const excerptApi = {
     api.get(`/excerpts/${id}/comments/`),
 
   addComment: (id: number, content: string): Promise<Comment> =>
-    api.post(`/excerpts/${id}/comments/`, { content })
+    api.post(`/excerpts/${id}/comments/`, { content }),
+
+  confirm: (id: number, confirmationStatus: 'confirmed' | 'needs_verification', confirmationNote: string = '', generateFollowup: boolean = false): Promise<ProgramExcerpt> =>
+    api.post(`/excerpts/${id}/confirm/`, {
+      confirmationStatus,
+      confirmationNote,
+      generateFollowup
+    })
 }
 
 export const topicApi = {
@@ -168,7 +179,7 @@ export const familyApi = {
   getMembers: (): Promise<FamilyMember[]> =>
     api.get('/family/members/'),
 
-  getFeed: (): Promise<{ type: string; data: ProgramExcerpt }[]> =>
+  getFeed: (): Promise<{ type: string; data: ProgramExcerpt; confirmationInfo?: ConfirmationInfo }[]> =>
     api.get('/family/feed/')
 }
 
