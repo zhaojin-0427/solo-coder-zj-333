@@ -148,6 +148,98 @@
             </div>
           </div>
         </el-form-item>
+
+        <el-form-item v-if="selectedExcerpts.length > 0" label="阅读顺序 / 重点标记 / 家属提醒">
+          <div class="selected-items-config border border-gray-200 rounded-lg">
+            <div class="bg-orange-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+              <span class="text-sm font-medium text-gray-700">
+                📋 已选条目（可拖拽调整顺序，点击 ⭐ 标记重点）
+              </span>
+              <span class="text-xs text-gray-500">
+                ⬆️⬇️ 调整顺序 &nbsp;|&nbsp; ⭐ 重点标记 &nbsp;|&nbsp; 💬 家属提醒
+              </span>
+            </div>
+            <div class="max-h-96 overflow-y-auto">
+              <div
+                v-for="(excerpt, index) in selectedExcerpts"
+                :key="excerpt.id"
+                class="selected-item p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="flex flex-col items-center gap-1 pt-1">
+                    <span class="w-6 h-6 flex items-center justify-center rounded-full bg-primary text-white text-sm font-bold">
+                      {{ index + 1 }}
+                    </span>
+                    <div class="flex flex-col">
+                      <el-button
+                        size="small"
+                        text
+                        :disabled="index === 0"
+                        @click="moveItemUp(index)"
+                        class="h-6 !px-1"
+                      >
+                        ⬆️
+                      </el-button>
+                      <el-button
+                        size="small"
+                        text
+                        :disabled="index === selectedExcerpts.length - 1"
+                        @click="moveItemDown(index)"
+                        class="h-6 !px-1"
+                      >
+                        ⬇️
+                      </el-button>
+                    </div>
+                  </div>
+
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                      <span class="font-semibold truncate">📻 {{ excerpt.programName }}</span>
+                      <span class="text-sm text-gray-500">{{ excerpt.date }}</span>
+                      <el-tag
+                        v-if="excerpt.topic"
+                        :style="{ backgroundColor: excerpt.topic.color + '20', color: excerpt.topic.color }"
+                        size="small"
+                      >
+                        {{ excerpt.topic.icon }} {{ excerpt.topic.name }}
+                      </el-tag>
+                    </div>
+                    <p class="text-sm text-gray-600 line-clamp-1 mb-2">{{ excerpt.contentSummary }}</p>
+
+                    <div class="flex items-center gap-4 flex-wrap">
+                      <el-checkbox
+                        :model-value="getItemConfig(excerpt.id).isHighlighted"
+                        @change="(val: boolean) => setItemHighlight(excerpt.id, val)"
+                      >
+                        ⭐ 标记为重点
+                      </el-checkbox>
+
+                      <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+                        <span class="text-sm text-gray-500 shrink-0">💬 家属提醒：</span>
+                        <el-input
+                          :model-value="getItemConfig(excerpt.id).familyReminder"
+                          @update:model-value="(val: string) => setItemReminder(excerpt.id, val)"
+                          size="small"
+                          placeholder="给老人看的提醒，例如：这条很重要，要仔细看"
+                          class="flex-1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <el-button
+                    size="small"
+                    text
+                    type="danger"
+                    @click="toggleExcerpt(excerpt.id, false)"
+                  >
+                    ✕ 移除
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -195,6 +287,8 @@ const formData = reactive({
   excerptIds: [] as number[]
 })
 
+const itemsConfig = reactive<Record<number, { isHighlighted: boolean; familyReminder: string }>>({})
+
 const formRules: FormRules = {
   title: [
     { required: true, message: '请输入资料包标题', trigger: 'blur' },
@@ -222,6 +316,41 @@ const isAllSelected = computed(() => {
     availableExcerpts.value.every(e => formData.excerptIds.includes(e.id))
 })
 
+const selectedExcerpts = computed(() => {
+  return formData.excerptIds
+    .map(id => availableExcerpts.value.find(e => e.id === id))
+    .filter((e): e is ProgramExcerpt => !!e)
+})
+
+const getItemConfig = (excerptId: number) => {
+  if (!itemsConfig[excerptId]) {
+    itemsConfig[excerptId] = { isHighlighted: false, familyReminder: '' }
+  }
+  return itemsConfig[excerptId]
+}
+
+const setItemHighlight = (excerptId: number, highlighted: boolean) => {
+  getItemConfig(excerptId).isHighlighted = highlighted
+}
+
+const setItemReminder = (excerptId: number, reminder: string) => {
+  getItemConfig(excerptId).familyReminder = reminder
+}
+
+const moveItemUp = (index: number) => {
+  if (index <= 0) return
+  const ids = [...formData.excerptIds]
+  ;[ids[index - 1], ids[index]] = [ids[index], ids[index - 1]]
+  formData.excerptIds = ids
+}
+
+const moveItemDown = (index: number) => {
+  if (index >= formData.excerptIds.length - 1) return
+  const ids = [...formData.excerptIds]
+  ;[ids[index], ids[index + 1]] = [ids[index + 1], ids[index]]
+  formData.excerptIds = ids
+}
+
 const formatDate = (dateStr: string) => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
@@ -243,18 +372,28 @@ const toggleExcerpt = (excerptId: number, selected: boolean) => {
       return
     }
     formData.excerptIds.push(excerptId)
+    if (!itemsConfig[excerptId]) {
+      itemsConfig[excerptId] = { isHighlighted: false, familyReminder: '' }
+    }
   } else {
     formData.excerptIds = formData.excerptIds.filter(id => id !== excerptId)
+    delete itemsConfig[excerptId]
   }
 }
 
 const toggleSelectAll = () => {
   if (isAllSelected.value) {
     formData.excerptIds = []
+    Object.keys(itemsConfig).forEach(key => delete itemsConfig[Number(key)])
   } else {
     const ids = availableExcerpts.value.map(e => e.id)
     const combined = [...new Set([...formData.excerptIds, ...ids])]
     formData.excerptIds = combined.slice(0, 20)
+    formData.excerptIds.forEach(id => {
+      if (!itemsConfig[id]) {
+        itemsConfig[id] = { isHighlighted: false, familyReminder: '' }
+      }
+    })
   }
 }
 
@@ -282,6 +421,7 @@ const openCreateDialog = () => {
   formData.purposeDescription = ''
   formData.guideText = ''
   formData.excerptIds = []
+  Object.keys(itemsConfig).forEach(key => delete itemsConfig[Number(key)])
   createDialogVisible.value = true
   loadExcerpts()
 }
@@ -293,11 +433,22 @@ const handleCreate = async () => {
     if (valid) {
       submitting.value = true
       try {
+        const finalItemsConfig: Record<string, { isHighlighted?: boolean; familyReminder?: string }> = {}
+        Object.entries(itemsConfig).forEach(([idStr, config]) => {
+          if (config.isHighlighted || config.familyReminder) {
+            finalItemsConfig[idStr] = {
+              isHighlighted: config.isHighlighted,
+              familyReminder: config.familyReminder
+            }
+          }
+        })
+
         const result = await reviewPackageApi.create({
           title: formData.title,
           purposeDescription: formData.purposeDescription || null,
           guideText: formData.guideText || null,
-          excerptIds: formData.excerptIds
+          excerptIds: formData.excerptIds,
+          itemsConfig: Object.keys(finalItemsConfig).length > 0 ? finalItemsConfig : undefined
         })
         ElMessage.success('资料包创建成功！')
         createDialogVisible.value = false

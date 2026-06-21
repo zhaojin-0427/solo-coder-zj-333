@@ -265,7 +265,7 @@ const initBarChart = () => {
   barChart = echarts.init(barChartRef.value)
 
   const data = statistics.value.popularPrograms || []
-  const names = data.map(item => item.name)
+  const names = data.map(item => item.programName)
   const counts = data.map(item => item.count)
 
   const option: echarts.EChartsOption = {
