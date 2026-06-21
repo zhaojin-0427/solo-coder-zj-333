@@ -5,6 +5,8 @@ from .views import (
     ProgramExcerptViewSet,
     CommentViewSet,
     FollowUpItemViewSet,
+    ReviewPackageViewSet,
+    ReviewPackageItemViewSet,
     FamilyMembersView,
     FamilyFeedView,
     StatisticsView,
@@ -15,6 +17,8 @@ router.register(r"topics", TopicViewSet, basename="topic")
 router.register(r"excerpts", ProgramExcerptViewSet, basename="excerpt")
 router.register(r"comments", CommentViewSet, basename="comment")
 router.register(r"followups", FollowUpItemViewSet, basename="followup")
+router.register(r"review-packages", ReviewPackageViewSet, basename="review-package")
+router.register(r"review-package-items", ReviewPackageItemViewSet, basename="review-package-item")
 
 urlpatterns = [
     path("", include(router.urls)),

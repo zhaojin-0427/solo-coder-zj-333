@@ -12,10 +12,14 @@ import type {
   Statistics,
   LoginResponse,
   ExcerptFilterParams,
-  ConfirmationInfo
+  ConfirmationInfo,
+  ReviewPackage,
+  ReviewPackageItem,
+  ReviewPackageFeedback,
+  FeedItem
 } from '@/types'
 
-const baseURL = 'http://localhost:9422/api'
+const baseURL = 'http://localhost:8000/api'
 
 const axiosInstance: AxiosInstance = axios.create({
   baseURL,
@@ -179,7 +183,7 @@ export const familyApi = {
   getMembers: (): Promise<FamilyMember[]> =>
     api.get('/family/members/'),
 
-  getFeed: (): Promise<{ type: string; data: ProgramExcerpt; confirmationInfo?: ConfirmationInfo }[]> =>
+  getFeed: (): Promise<FeedItem[]> =>
     api.get('/family/feed/')
 }
 
@@ -189,30 +193,98 @@ export const followUpApi = {
     return api.get(`/followups/${query}`)
   },
 
-  create: (data: Partial<FollowUpItem> & { assignedToId?: number | null }): Promise<FollowUpItem> =>
+  create: (data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null }): Promise<FollowUpItem> =>
     api.post('/followups/', {
       title: data.title,
       description: data.description,
       status: data.status,
       priority: data.priority,
       excerptId: data.excerptId,
+      reviewPackageItemId: data.reviewPackageItemId,
       assignedToId: data.assignedToId ?? (typeof data.assignedTo === 'object' ? data.assignedTo?.id : data.assignedTo),
       dueDate: data.dueDate
     }),
 
-  update: (id: number, data: Partial<FollowUpItem> & { assignedToId?: number | null }): Promise<FollowUpItem> =>
+  update: (id: number, data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null }): Promise<FollowUpItem> =>
     api.put(`/followups/${id}/`, {
       title: data.title,
       description: data.description,
       status: data.status,
       priority: data.priority,
       excerptId: data.excerptId,
+      reviewPackageItemId: data.reviewPackageItemId,
       assignedToId: data.assignedToId ?? (typeof data.assignedTo === 'object' ? data.assignedTo?.id : data.assignedTo),
       dueDate: data.dueDate
     }),
 
   updateStatus: (id: number, status: string): Promise<FollowUpItem> =>
     api.put(`/followups/${id}/`, { status })
+}
+
+export const reviewPackageApi = {
+  getList: (): Promise<ReviewPackage[]> =>
+    api.get('/review-packages/'),
+
+  getDetail: (id: number): Promise<ReviewPackage> =>
+    api.get(`/review-packages/${id}/`),
+
+  create: (data: {
+    title: string
+    purposeDescription?: string | null
+    guideText?: string | null
+    excerptIds: number[]
+    itemsConfig?: Record<string, { isHighlighted?: boolean; familyReminder?: string }>
+  }): Promise<ReviewPackage> =>
+    api.post('/review-packages/', {
+      title: data.title,
+      purposeDescription: data.purposeDescription,
+      guideText: data.guideText,
+      excerptIds: data.excerptIds,
+      itemsConfig: data.itemsConfig
+    }),
+
+  update: (id: number, data: {
+    title?: string
+    purposeDescription?: string | null
+    guideText?: string | null
+    excerptIds?: number[]
+    itemsConfig?: Record<string, { isHighlighted?: boolean; familyReminder?: string }>
+  }): Promise<ReviewPackage> =>
+    api.put(`/review-packages/${id}/`, {
+      title: data.title,
+      purposeDescription: data.purposeDescription,
+      guideText: data.guideText,
+      excerptIds: data.excerptIds,
+      itemsConfig: data.itemsConfig
+    }),
+
+  remove: (id: number): Promise<void> =>
+    api.delete(`/review-packages/${id}/`),
+
+  reorderItems: (packageId: number, orderedItemIds: number[]): Promise<ReviewPackageItem[]> =>
+    api.post(`/review-packages/${packageId}/reorder-items/`, {
+      orderedItemIds
+    }),
+
+  getFeedbacks: (packageId: number): Promise<ReviewPackageFeedback[]> =>
+    api.get(`/review-packages/${packageId}/feedbacks/`),
+
+  getItemList: (packageId?: number): Promise<ReviewPackageItem[]> => {
+    const query = packageId ? `?package_id=${packageId}` : ''
+    return api.get(`/review-package-items/${query}`)
+  },
+
+  updateItemConfig: (itemId: number, data: { isHighlighted?: boolean; familyReminder?: string | null }): Promise<ReviewPackageItem> =>
+    api.post(`/review-package-items/${itemId}/update-config/`, {
+      isHighlighted: data.isHighlighted,
+      familyReminder: data.familyReminder
+    }),
+
+  submitFeedback: (itemId: number, feedbackType: 'read' | 'review_again' | 'needs_explanation', note?: string): Promise<ReviewPackageFeedback> =>
+    api.post(`/review-package-items/${itemId}/submit-feedback/`, {
+      feedbackType,
+      note
+    })
 }
 
 export const statisticsApi = {

@@ -15,7 +15,7 @@
     </h1>
 
     <div v-if="loading" class="loading-container py-16">
-      <el-loading text="加载中..." size="large" />
+      <div class="text-gray-500 text-lg">⏳ 加载中...</div>
     </div>
 
     <div v-else>
@@ -42,6 +42,33 @@
           <div class="stat-card">
             <div class="stat-number text-green">{{ statistics?.confirmationStatus?.confirmed || 0 }}</div>
             <div class="stat-label">✅ 已确认</div>
+          </div>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="24" class="mb-6">
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-purple">{{ statistics?.reviewPackageStats?.totalPackages || 0 }}</div>
+            <div class="stat-label">📚 资料包数量</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-orange">{{ statistics?.reviewPackageStats?.totalItems || 0 }}</div>
+            <div class="stat-label">📄 资料包条目</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-yellow">{{ statistics?.reviewPackageStats?.highlightedItems || 0 }}</div>
+            <div class="stat-label">⭐ 重点标记</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-red-500">{{ statistics?.reviewPackageStats?.needsExplanationCount || 0 }}</div>
+            <div class="stat-label">❓ 待讲解</div>
           </div>
         </el-col>
       </el-row>
@@ -157,6 +184,24 @@
             <div ref="confirmationPieRef" class="chart-container"></div>
           </el-card>
         </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">📚 资料包专题分布</h3>
+            </template>
+            <div ref="packageTopicChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">💬 老人反馈分布</h3>
+            </template>
+            <div ref="feedbackChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
       </el-row>
     </div>
   </div>
@@ -178,12 +223,16 @@ const pieChartRef = ref<HTMLElement | null>(null)
 const donutChartRef = ref<HTMLElement | null>(null)
 const trendChartRef = ref<HTMLElement | null>(null)
 const confirmationPieRef = ref<HTMLElement | null>(null)
+const packageTopicChartRef = ref<HTMLElement | null>(null)
+const feedbackChartRef = ref<HTMLElement | null>(null)
 
 let barChart: echarts.ECharts | null = null
 let pieChart: echarts.ECharts | null = null
 let donutChart: echarts.ECharts | null = null
 let trendChart: echarts.ECharts | null = null
 let confirmationPie: echarts.ECharts | null = null
+let packageTopicChart: echarts.ECharts | null = null
+let feedbackChart: echarts.ECharts | null = null
 
 const totalConfirmation = computed(() => {
   if (!statistics.value?.confirmationStatus) return 0
@@ -584,6 +633,165 @@ const initConfirmationPie = () => {
   confirmationPie.setOption(option)
 }
 
+const initPackageTopicChart = () => {
+  if (!packageTopicChartRef.value || !statistics.value) return
+
+  if (packageTopicChart) {
+    packageTopicChart.dispose()
+  }
+
+  packageTopicChart = echarts.init(packageTopicChartRef.value)
+
+  const data = statistics.value.reviewPackageStats?.topicDistribution || []
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} 条 ({d}%)'
+    },
+    legend: {
+      orient: 'vertical',
+      right: '5%',
+      top: 'center',
+      itemWidth: 20,
+      itemHeight: 20,
+      textStyle: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: '资料包专题分布',
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['35%', '50%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: '#fff',
+          borderWidth: 2
+        },
+        label: {
+          show: false,
+          position: 'center'
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 18,
+            fontWeight: 'bold'
+          }
+        },
+        labelLine: {
+          show: false
+        },
+        data: data.length > 0 ? data.map(item => ({
+          value: item.count,
+          name: `${item.icon} ${item.name}`,
+          itemStyle: {
+            color: item.color
+          }
+        })) : [{ value: 0, name: '暂无数据', itemStyle: { color: '#ccc' } }]
+      }
+    ]
+  }
+
+  packageTopicChart.setOption(option)
+}
+
+const initFeedbackChart = () => {
+  if (!feedbackChartRef.value || !statistics.value) return
+
+  if (feedbackChart) {
+    feedbackChart.dispose()
+  }
+
+  feedbackChart = echarts.init(feedbackChartRef.value)
+
+  const fd = statistics.value.reviewPackageStats?.feedbackDistribution || { read: 0, reviewAgain: 0, needsExplanation: 0 }
+  const total = fd.read + fd.reviewAgain + fd.needsExplanation
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} 条 ({d}%)'
+    },
+    legend: {
+      orient: 'horizontal',
+      bottom: '5%',
+      itemWidth: 20,
+      itemHeight: 20,
+      textStyle: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: '老人反馈',
+        type: 'pie',
+        radius: ['45%', '70%'],
+        center: ['50%', '45%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: '#fff',
+          borderWidth: 3
+        },
+        label: {
+          show: true,
+          position: 'center',
+          formatter: `{a|总反馈}\n{b|${total} 条}`,
+          rich: {
+            a: {
+              fontSize: 16,
+              color: '#666',
+              padding: [0, 0, 8, 0]
+            },
+            b: {
+              fontSize: 32,
+              fontWeight: 'bold',
+              color: '#FF7A45'
+            }
+          }
+        },
+        emphasis: {
+          label: {
+            show: true
+          }
+        },
+        labelLine: {
+          show: false
+        },
+        data: [
+          {
+            value: fd.read,
+            name: '✅ 已读',
+            itemStyle: {
+              color: '#52C41A'
+            }
+          },
+          {
+            value: fd.reviewAgain,
+            name: '🔄 还想再看',
+            itemStyle: {
+              color: '#FAAD14'
+            }
+          },
+          {
+            value: fd.needsExplanation,
+            name: '❓ 需要讲解',
+            itemStyle: {
+              color: '#F5222D'
+            }
+          }
+        ]
+      }
+    ]
+  }
+
+  feedbackChart.setOption(option)
+}
+
 const initCharts = () => {
   nextTick(() => {
     initBarChart()
@@ -591,6 +799,8 @@ const initCharts = () => {
     initDonutChart()
     initTrendChart()
     initConfirmationPie()
+    initPackageTopicChart()
+    initFeedbackChart()
   })
 }
 
@@ -616,6 +826,8 @@ const handleResize = () => {
   donutChart?.resize()
   trendChart?.resize()
   confirmationPie?.resize()
+  packageTopicChart?.resize()
+  feedbackChart?.resize()
 }
 
 watch(
@@ -639,5 +851,7 @@ onUnmounted(() => {
   donutChart?.dispose()
   trendChart?.dispose()
   confirmationPie?.dispose()
+  packageTopicChart?.dispose()
+  feedbackChart?.dispose()
 })
 </script>

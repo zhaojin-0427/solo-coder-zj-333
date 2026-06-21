@@ -94,6 +94,7 @@ const userStore = useUserStore()
 const navItems = [
   { path: '/', title: '节目摘录', icon: '📻' },
   { path: '/topics', title: '专题整理', icon: '📁' },
+  { path: '/review-packages', title: '回听资料包', icon: '📚' },
   { path: '/family', title: '家庭共享', icon: '👨‍👩‍👧‍👦' },
   { path: '/followups', title: '待跟进', icon: '📋' },
   { path: '/statistics', title: '统计', icon: '📊' }

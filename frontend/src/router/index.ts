@@ -23,6 +23,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: '专题整理' }
   },
   {
+    path: '/review-packages',
+    name: 'review-packages',
+    component: () => import('@/pages/ReviewPackagesPage.vue'),
+    meta: { requiresAuth: true, title: '回听资料包' }
+  },
+  {
+    path: '/review-packages/:id',
+    name: 'review-package-detail',
+    component: () => import('@/pages/ReviewPackageDetailPage.vue'),
+    meta: { requiresAuth: true, title: '资料包详情' }
+  },
+  {
     path: '/family',
     name: 'family',
     component: () => import('@/pages/FamilyPage.vue'),

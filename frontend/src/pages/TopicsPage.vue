@@ -59,7 +59,7 @@
     </div>
 
     <div v-if="loading" class="loading-container">
-      <el-loading text="加载中..." size="large" />
+      <div class="text-gray-500 text-lg">⏳ 加载中...</div>
     </div>
 
     <div v-else-if="excerpts.length === 0" class="loading-container">
@@ -279,7 +279,7 @@
       size="large"
     >
       <div v-if="loadingVersions" class="loading-container py-8">
-        <el-loading text="加载中..." />
+        <div class="text-gray-500 text-lg">⏳ 加载中...</div>
       </div>
       <div v-else-if="versions.length === 0" class="py-8">
         <el-empty description="暂无版本历史" />

@@ -1,6 +1,9 @@
 from rest_framework import serializers
 from accounts.serializers import UserSerializer
-from .models import Topic, ProgramExcerpt, Version, Comment, FollowUpItem
+from .models import (
+    Topic, ProgramExcerpt, Version, Comment, FollowUpItem,
+    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback
+)
 
 
 class TopicSerializer(serializers.ModelSerializer):
@@ -160,15 +163,177 @@ class ProgramExcerptListSerializer(serializers.ModelSerializer):
         return None
 
 
+class ReviewPackageItemSerializer(serializers.ModelSerializer):
+    excerpt = ProgramExcerptListSerializer(read_only=True)
+    excerpt_id = serializers.IntegerField(write_only=True)
+    feedback_type = serializers.SerializerMethodField(read_only=True)
+    feedback_count = serializers.SerializerMethodField(read_only=True)
+    latest_feedback = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ReviewPackageItem
+        fields = (
+            "id",
+            "excerpt",
+            "excerpt_id",
+            "order_index",
+            "is_highlighted",
+            "family_reminder",
+            "feedback_type",
+            "feedback_count",
+            "latest_feedback",
+            "created_at",
+        )
+        read_only_fields = ("id", "created_at", "excerpt", "feedback_type", "feedback_count", "latest_feedback")
+
+    def get_feedback_type(self, obj):
+        request = self.context.get("request")
+        if request and request.user.role == "elderly":
+            feedback = obj.feedbacks.filter(elderly_user=request.user).order_by("-created_at").first()
+            return feedback.feedback_type if feedback else None
+        return None
+
+    def get_feedback_count(self, obj):
+        return obj.feedbacks.count()
+
+    def get_latest_feedback(self, obj):
+        feedback = obj.feedbacks.order_by("-created_at").first()
+        if feedback:
+            return {
+                "id": feedback.id,
+                "feedback_type": feedback.feedback_type,
+                "feedback_type_display": feedback.get_feedback_type_display(),
+                "note": feedback.note,
+                "elderly_user_name": feedback.elderly_user.first_name or feedback.elderly_user.username,
+                "created_at": feedback.created_at,
+            }
+        return None
+
+
+class ReviewPackageListSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+    item_count = serializers.SerializerMethodField(read_only=True)
+    feedback_count = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ReviewPackage
+        fields = (
+            "id",
+            "title",
+            "purpose_description",
+            "guide_text",
+            "created_by",
+            "created_by_name",
+            "item_count",
+            "feedback_count",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "created_by", "item_count", "feedback_count")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.first_name or obj.created_by.username
+
+    def get_item_count(self, obj):
+        return obj.items.count()
+
+    def get_feedback_count(self, obj):
+        return ReviewPackageFeedback.objects.filter(
+            package_item__review_package=obj
+        ).count()
+
+
+class ReviewPackageDetailSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+    items = ReviewPackageItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ReviewPackage
+        fields = (
+            "id",
+            "title",
+            "purpose_description",
+            "guide_text",
+            "created_by",
+            "created_by_name",
+            "items",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "created_by", "items")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.first_name or obj.created_by.username
+
+
+class ReviewPackageCreateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=200)
+    purpose_description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    guide_text = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    excerpt_ids = serializers.ListField(child=serializers.IntegerField())
+    items_config = serializers.DictField(required=False, allow_empty=True, default=None)
+
+
+class ReviewPackageUpdateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=200, required=False)
+    purpose_description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    guide_text = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    excerpt_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
+    items_config = serializers.DictField(required=False, allow_empty=True, default=None)
+
+
+class ReorderItemsSerializer(serializers.Serializer):
+    ordered_item_ids = serializers.ListField(child=serializers.IntegerField())
+
+
+class UpdateItemConfigSerializer(serializers.Serializer):
+    is_highlighted = serializers.BooleanField(required=False)
+    family_reminder = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class SubmitFeedbackSerializer(serializers.Serializer):
+    feedback_type = serializers.ChoiceField(choices=["read", "review_again", "needs_explanation"])
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class ReviewPackageFeedbackSerializer(serializers.ModelSerializer):
+    package_item = ReviewPackageItemSerializer(read_only=True)
+    elderly_user = UserSerializer(read_only=True)
+    elderly_user_name = serializers.SerializerMethodField(read_only=True)
+    feedback_type_display = serializers.CharField(source="get_feedback_type_display", read_only=True)
+
+    class Meta:
+        model = ReviewPackageFeedback
+        fields = (
+            "id",
+            "package_item",
+            "elderly_user",
+            "elderly_user_name",
+            "feedback_type",
+            "feedback_type_display",
+            "note",
+            "created_at",
+        )
+        read_only_fields = ("id", "created_at", "package_item", "elderly_user")
+
+    def get_elderly_user_name(self, obj):
+        return obj.elderly_user.first_name or obj.elderly_user.username
+
+
 class FollowUpItemSerializer(serializers.ModelSerializer):
     excerpt = ProgramExcerptListSerializer(read_only=True)
     excerpt_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    review_package_item = ReviewPackageItemSerializer(read_only=True)
+    review_package_item_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     assigned_to = UserSerializer(read_only=True)
     assigned_to_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     priority_display = serializers.CharField(source="get_priority_display", read_only=True)
     source_type_display = serializers.CharField(source="get_source_type_display", read_only=True)
     assigned_to_name = serializers.SerializerMethodField(read_only=True)
+    review_package = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = FollowUpItem
@@ -184,17 +349,29 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
             "source_type_display",
             "excerpt",
             "excerpt_id",
+            "review_package_item",
+            "review_package_item_id",
+            "review_package",
             "assigned_to",
             "assigned_to_id",
             "assigned_to_name",
             "due_date",
             "created_at",
         )
-        read_only_fields = ("id", "created_at", "excerpt", "assigned_to", "source_type")
+        read_only_fields = ("id", "created_at", "excerpt", "review_package_item", "review_package", "assigned_to", "source_type")
 
     def get_assigned_to_name(self, obj):
         if obj.assigned_to:
             return obj.assigned_to.first_name or obj.assigned_to.username
+        return None
+
+    def get_review_package(self, obj):
+        if obj.review_package_item:
+            package = obj.review_package_item.review_package
+            return {
+                "id": package.id,
+                "title": package.title,
+            }
         return None
 
 

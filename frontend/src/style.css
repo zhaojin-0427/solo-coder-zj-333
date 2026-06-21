@@ -270,6 +270,18 @@ html, body {
   color: var(--color-yellow);
 }
 
+.text-purple {
+  color: #722ED1;
+}
+
+.text-orange {
+  color: #FF7A45;
+}
+
+.text-red-500 {
+  color: #F5222D;
+}
+
 .border-primary {
   border-color: var(--color-primary);
 }

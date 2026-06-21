@@ -2,7 +2,11 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta
-from .models import ProgramExcerpt, Version, Topic, FollowUpItem
+from .models import (
+    ProgramExcerpt, Version, Topic, FollowUpItem,
+    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback
+)
+from accounts.models import User
 
 
 class ConfirmationService:
@@ -125,6 +129,8 @@ class StatisticsService:
                 "count": day_count,
             })
 
+        package_stats = ReviewPackageService.get_package_statistics(family_group_id)
+
         return {
             "popular_programs": [
                 {"program_name": item["program_name"], "count": item["count"]}
@@ -142,6 +148,7 @@ class StatisticsService:
             "confirmation_status": confirmation_status,
             "pending_confirmation_count": pending_confirmation_count,
             "confirmation_trend_7d": confirmation_trend_7d,
+            "review_package_stats": package_stats,
         }
 
 
@@ -194,3 +201,222 @@ class ProgramExcerptService:
             created_by=user,
             merge_note=merge_note
         )
+
+
+class ReviewPackageService:
+    @staticmethod
+    @transaction.atomic
+    def create_package(user, title, excerpt_ids, purpose_description=None, guide_text=None, items_config=None):
+        if not excerpt_ids:
+            raise ValueError("必须选择至少一条节目摘录")
+        if len(excerpt_ids) > 20:
+            raise ValueError("最多只能选择 20 条节目摘录")
+        if len(excerpt_ids) != len(set(excerpt_ids)):
+            raise ValueError("不能重复选择同一条摘录")
+
+        excerpts = ProgramExcerpt.objects.filter(id__in=excerpt_ids)
+        if excerpts.count() != len(excerpt_ids):
+            raise ValueError("部分节目摘录不存在")
+
+        family_group = user.family_group
+
+        package = ReviewPackage.objects.create(
+            title=title,
+            purpose_description=purpose_description,
+            guide_text=guide_text,
+            created_by=user,
+            family_group=family_group,
+        )
+
+        items_config = items_config or {}
+        for idx, excerpt_id in enumerate(excerpt_ids):
+            excerpt = excerpts.get(id=excerpt_id)
+            config = items_config.get(str(excerpt_id), {}) if isinstance(items_config, dict) else {}
+            ReviewPackageItem.objects.create(
+                review_package=package,
+                excerpt=excerpt,
+                order_index=idx,
+                is_highlighted=config.get("is_highlighted", False),
+                family_reminder=config.get("family_reminder", ""),
+            )
+
+        return package
+
+    @staticmethod
+    @transaction.atomic
+    def update_package(package, user, title=None, purpose_description=None, guide_text=None,
+                       excerpt_ids=None, items_config=None):
+        if title is not None:
+            package.title = title
+        if purpose_description is not None:
+            package.purpose_description = purpose_description
+        if guide_text is not None:
+            package.guide_text = guide_text
+
+        if excerpt_ids is not None:
+            if not excerpt_ids:
+                raise ValueError("必须选择至少一条节目摘录")
+            if len(excerpt_ids) > 20:
+                raise ValueError("最多只能选择 20 条节目摘录")
+            if len(excerpt_ids) != len(set(excerpt_ids)):
+                raise ValueError("不能重复选择同一条摘录")
+
+            excerpts = ProgramExcerpt.objects.filter(id__in=excerpt_ids)
+            if excerpts.count() != len(excerpt_ids):
+                raise ValueError("部分节目摘录不存在")
+
+            package.items.all().delete()
+
+            items_config = items_config or {}
+            for idx, excerpt_id in enumerate(excerpt_ids):
+                excerpt = excerpts.get(id=excerpt_id)
+                config = items_config.get(str(excerpt_id), {}) if isinstance(items_config, dict) else {}
+                ReviewPackageItem.objects.create(
+                    review_package=package,
+                    excerpt=excerpt,
+                    order_index=idx,
+                    is_highlighted=config.get("is_highlighted", False),
+                    family_reminder=config.get("family_reminder", ""),
+                )
+
+        package.save()
+        return package
+
+    @staticmethod
+    @transaction.atomic
+    def reorder_items(package, ordered_item_ids):
+        items = list(package.items.all())
+        if len(items) != len(ordered_item_ids):
+            raise ValueError("条目数量不匹配")
+
+        item_map = {item.id: item for item in items}
+        for idx, item_id in enumerate(ordered_item_ids):
+            if item_id not in item_map:
+                raise ValueError(f"条目 {item_id} 不存在")
+            item_map[item_id].order_index = idx
+            item_map[item_id].save()
+
+        return package.items.all()
+
+    @staticmethod
+    def update_item_config(package_item, is_highlighted=None, family_reminder=None):
+        if is_highlighted is not None:
+            package_item.is_highlighted = is_highlighted
+        if family_reminder is not None:
+            package_item.family_reminder = family_reminder
+        package_item.save()
+        return package_item
+
+    @staticmethod
+    @transaction.atomic
+    def submit_feedback(package_item, elderly_user, feedback_type, note=""):
+        if elderly_user.role != "elderly":
+            raise ValueError("只有老人可以提交反馈")
+
+        feedback = ReviewPackageFeedback.objects.create(
+            package_item=package_item,
+            elderly_user=elderly_user,
+            feedback_type=feedback_type,
+            note=note,
+        )
+
+        follow_up_item = None
+        if feedback_type == "needs_explanation":
+            follow_up_item = ReviewPackageService._generate_followup_for_feedback(feedback)
+
+        return feedback, follow_up_item
+
+    @staticmethod
+    def _generate_followup_for_feedback(feedback):
+        package_item = feedback.package_item
+        package = package_item.review_package
+        excerpt = package_item.excerpt
+        family_group = package.family_group
+
+        assigned_to = None
+        if family_group:
+            family_members = User.objects.filter(
+                family_group=family_group,
+                role="family"
+            )
+            if family_members.exists():
+                assigned_to = family_members.first()
+
+        title = f"讲解需求：{package.title} - {excerpt.program_name}"
+        description_parts = [
+            f"老人「{feedback.elderly_user.first_name or feedback.elderly_user.username}」需要对以下内容进行讲解：",
+            f"",
+            f"资料包：{package.title}",
+            f"节目：{excerpt.program_name}（{excerpt.date}）",
+            f"内容摘要：{excerpt.content_summary}",
+        ]
+        if feedback.note:
+            description_parts.append(f"")
+            description_parts.append(f"老人补充说明：{feedback.note}")
+        if package_item.family_reminder:
+            description_parts.append(f"")
+            description_parts.append(f"家属提醒：{package_item.family_reminder}")
+
+        description = "\n".join(description_parts)
+
+        return FollowUpItem.objects.create(
+            title=title,
+            description=description,
+            status="pending",
+            priority="high",
+            source_type="review_package",
+            excerpt=excerpt,
+            review_package_item=package_item,
+            assigned_to=assigned_to,
+            due_date=(timezone.now() + timedelta(days=3)).date(),
+        )
+
+    @staticmethod
+    def get_package_statistics(family_group_id=None):
+        base_query = ReviewPackage.objects.all()
+        if family_group_id:
+            base_query = base_query.filter(family_group_id=family_group_id)
+
+        total_packages = base_query.count()
+
+        items_query = ReviewPackageItem.objects.filter(review_package__in=base_query)
+        total_items = items_query.count()
+        highlighted_items = items_query.filter(is_highlighted=True).count()
+
+        feedbacks_query = ReviewPackageFeedback.objects.filter(
+            package_item__review_package__in=base_query
+        )
+
+        feedback_distribution = {
+            "read": feedbacks_query.filter(feedback_type="read").count(),
+            "review_again": feedbacks_query.filter(feedback_type="review_again").count(),
+            "needs_explanation": feedbacks_query.filter(feedback_type="needs_explanation").count(),
+        }
+
+        topic_distribution = []
+        topics = Topic.objects.all()
+        for topic in topics:
+            item_count = items_query.filter(excerpt__topic=topic).count()
+            if item_count > 0:
+                topic_distribution.append({
+                    "id": topic.id,
+                    "name": topic.name,
+                    "color": topic.color,
+                    "icon": topic.icon,
+                    "count": item_count,
+                })
+
+        needs_explanation_count = FollowUpItem.objects.filter(
+            source_type="review_package",
+            review_package_item__review_package__in=base_query,
+            status__in=["pending", "in_progress"],
+        ).count()
+
+        return {
+            "total_packages": total_packages,
+            "total_items": total_items,
+            "highlighted_items": highlighted_items,
+            "feedback_distribution": feedback_distribution,
+            "topic_distribution": topic_distribution,
+            "needs_explanation_count": needs_explanation_count,
+        }

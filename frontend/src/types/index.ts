@@ -79,6 +79,87 @@ export interface FamilyMember {
   contributionCount?: number
 }
 
+export interface ReviewPackageItem {
+  id: number
+  excerpt: ProgramExcerpt | null
+  excerptId?: number
+  orderIndex: number
+  isHighlighted: boolean
+  familyReminder: string | null
+  feedbackType: 'read' | 'review_again' | 'needs_explanation' | null
+  feedbackCount: number
+  latestFeedback: ReviewPackageFeedbackInfo | null
+  createdAt: string
+}
+
+export interface ReviewPackageFeedbackInfo {
+  id: number
+  feedbackType: 'read' | 'review_again' | 'needs_explanation'
+  feedbackTypeDisplay: string
+  note: string | null
+  elderlyUserName: string
+  createdAt: string
+}
+
+export interface ReviewPackage {
+  id: number
+  title: string
+  purposeDescription: string | null
+  guideText: string | null
+  createdBy: UserInfo | null
+  createdByName: string
+  itemCount: number
+  feedbackCount: number
+  items?: ReviewPackageItem[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReviewPackageFeedback {
+  id: number
+  packageItem: ReviewPackageItem | null
+  elderlyUser: UserInfo | null
+  elderlyUserName: string
+  feedbackType: 'read' | 'review_again' | 'needs_explanation'
+  feedbackTypeDisplay: string
+  note: string | null
+  createdAt: string
+  generatedFollowup?: FollowUpItem | null
+}
+
+export interface ReviewPackageFeedItem {
+  id: number
+  feedbackType: 'read' | 'review_again' | 'needs_explanation'
+  feedbackTypeDisplay: string
+  note: string | null
+  elderlyUserName: string
+  elderlyUserAvatar: string
+  packageId: number
+  packageTitle: string
+  packageItemId: number
+  excerptProgramName: string
+  excerptContentSummary: string
+}
+
+export interface ReviewPackageStats {
+  totalPackages: number
+  totalItems: number
+  highlightedItems: number
+  feedbackDistribution: {
+    read: number
+    reviewAgain: number
+    needsExplanation: number
+  }
+  topicDistribution: {
+    id: number
+    name: string
+    color: string
+    icon: string
+    count: number
+  }[]
+  needsExplanationCount: number
+}
+
 export interface FollowUpItem {
   id: number
   title: string
@@ -87,10 +168,13 @@ export interface FollowUpItem {
   statusDisplay: string
   priority: 'high' | 'medium' | 'low'
   priorityDisplay: string
-  sourceType: 'manual' | 'confirmation'
+  sourceType: 'manual' | 'confirmation' | 'review_package'
   sourceTypeDisplay: string
   excerpt: ProgramExcerpt | null
   excerptId?: number | null
+  reviewPackageItem: ReviewPackageItem | null
+  reviewPackageItemId?: number | null
+  reviewPackage: { id: number; title: string } | null
   assignedTo: UserInfo | null
   assignedToId?: number | null
   assignedToName: string | null
@@ -106,7 +190,7 @@ export interface Comment {
 }
 
 export interface Statistics {
-  popularPrograms: { name: string; count: number }[]
+  popularPrograms: { programName: string; count: number }[]
   topicDistribution: { name: string; count: number; color: string }[]
   duplicateRatio: { total: number; duplicates: number; rate: number }
   unconfirmedExcerpts: number
@@ -115,6 +199,7 @@ export interface Statistics {
   confirmationStatus: { pending: number; confirmed: number; needsVerification: number }
   pendingConfirmationCount: number
   confirmationTrend7d: { date: string; count: number }[]
+  reviewPackageStats: ReviewPackageStats
 }
 
 export interface User {
@@ -161,3 +246,8 @@ export interface ConfirmationInfo {
   confirmationStatus: string
   confirmationStatusDisplay: string
 }
+
+export type FeedItem =
+  | { type: 'excerpt'; data: ProgramExcerpt; confirmationInfo?: ConfirmationInfo; createdAt: string }
+  | { type: 'review_package'; data: ReviewPackage; createdAt: string }
+  | { type: 'review_package_feedback'; data: ReviewPackageFeedItem; createdAt: string }

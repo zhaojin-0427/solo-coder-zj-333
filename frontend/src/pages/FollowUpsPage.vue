@@ -37,7 +37,7 @@
     </div>
 
     <div v-if="loading" class="loading-container">
-      <el-loading text="加载中..." size="large" />
+      <div class="text-gray-500 text-lg">⏳ 加载中...</div>
     </div>
 
     <div v-else-if="filteredItems.length === 0" class="loading-container">
@@ -77,6 +77,14 @@
               >
                 🔗 确认催办
               </el-tag>
+              <el-tag
+                v-if="item.sourceType === 'review_package'"
+                type="danger"
+                size="large"
+                effect="light"
+              >
+                📚 资料包讲解需求
+              </el-tag>
             </div>
 
             <p class="text-base text-gray-700 mb-3">{{ item.description }}</p>
@@ -94,27 +102,38 @@
             </div>
 
             <div
-              v-if="item.excerpt"
+              v-if="item.reviewPackage || item.excerpt"
               class="mt-4 p-4 rounded-xl border-l-4"
-              :class="item.sourceType === 'confirmation' ? 'bg-orange-50 border-orange-400' : 'bg-orange-50 border-primary'"
+              :class="item.sourceType === 'confirmation' ? 'bg-orange-50 border-orange-400' : item.sourceType === 'review_package' ? 'bg-red-50 border-red-400' : 'bg-orange-50 border-primary'"
             >
-              <div class="flex items-center gap-2 mb-1">
+              <div class="flex items-center gap-2 mb-2">
                 <p class="text-sm text-gray-500">
-                  {{ item.sourceType === 'confirmation' ? '🔗 来源摘录（确认催办）' : '关联节目' }}
+                  <span v-if="item.sourceType === 'confirmation'">🔗 来源摘录（确认催办）</span>
+                  <span v-else-if="item.sourceType === 'review_package'">📚 来源资料包（讲解需求）</span>
+                  <span v-else>关联节目</span>
                 </p>
               </div>
-              <p class="text-base font-medium">📻 {{ item.excerpt.programName }}</p>
-              <p class="text-sm text-gray-600 mt-1 line-clamp-2">{{ item.excerpt.contentSummary }}</p>
-              <div class="flex items-center gap-2 mt-2">
-                <span class="text-sm text-gray-500">📅 {{ item.excerpt.date }}</span>
-                <span class="text-sm text-gray-500">⏰ {{ item.excerpt.timeSlot }}</span>
-                <el-tag
-                  :type="confirmationTagType(item.excerpt.confirmationStatus)"
-                  size="small"
-                  effect="light"
-                >
-                  {{ confirmationLabel(item.excerpt.confirmationStatus) }}
-                </el-tag>
+
+              <div v-if="item.reviewPackage" class="mb-3 p-3 bg-white rounded-lg p-3">
+                <p class="text-base font-medium text-red-700">
+                  📚 {{ item.reviewPackage.title }}
+                </p>
+              </div>
+
+              <div v-if="item.excerpt">
+                <p class="text-base font-medium">📻 {{ item.excerpt.programName }}</p>
+                <p class="text-sm text-gray-600 mt-1 line-clamp-2">{{ item.excerpt.contentSummary }}</p>
+                <div class="flex items-center gap-2 mt-2">
+                  <span class="text-sm text-gray-500">📅 {{ item.excerpt.date }}</span>
+                  <span class="text-sm text-gray-500">⏰ {{ item.excerpt.timeSlot }}</span>
+                  <el-tag
+                    :type="confirmationTagType(item.excerpt.confirmationStatus)"
+                    size="small"
+                    effect="light"
+                  >
+                    {{ confirmationLabel(item.excerpt.confirmationStatus) }}
+                  </el-tag>
+                </div>
               </div>
             </div>
           </div>

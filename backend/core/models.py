@@ -139,6 +139,106 @@ class Comment(models.Model):
         return f"{self.user.username} 评论 {self.excerpt.program_name}"
 
 
+class ReviewPackage(models.Model):
+    id = models.AutoField(primary_key=True)
+    title = models.CharField(max_length=200, verbose_name="资料包标题")
+    purpose_description = models.TextField(blank=True, null=True, verbose_name="用途说明")
+    guide_text = models.TextField(blank=True, null=True, verbose_name="导览语")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="created_review_packages",
+        verbose_name="创建人（家属）"
+    )
+    family_group = models.ForeignKey(
+        "accounts.FamilyGroup",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="review_packages",
+        verbose_name="所属家庭组"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "review_package"
+        verbose_name = "回听资料包"
+        verbose_name_plural = "回听资料包"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class ReviewPackageItem(models.Model):
+    id = models.AutoField(primary_key=True)
+    review_package = models.ForeignKey(
+        ReviewPackage,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="所属资料包"
+    )
+    excerpt = models.ForeignKey(
+        ProgramExcerpt,
+        on_delete=models.CASCADE,
+        related_name="review_package_items",
+        verbose_name="关联节目摘录"
+    )
+    order_index = models.PositiveIntegerField(default=0, verbose_name="阅读顺序")
+    is_highlighted = models.BooleanField(default=False, verbose_name="是否重点标记")
+    family_reminder = models.TextField(blank=True, null=True, verbose_name="家属提醒")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        db_table = "review_package_item"
+        verbose_name = "资料包条目"
+        verbose_name_plural = "资料包条目"
+        ordering = ["order_index", "id"]
+        unique_together = [["review_package", "excerpt"]]
+
+    def __str__(self):
+        return f"{self.review_package.title} - {self.excerpt.program_name}"
+
+
+class ReviewPackageFeedback(models.Model):
+    FEEDBACK_TYPE_CHOICES = (
+        ("read", "已读"),
+        ("review_again", "还想再看"),
+        ("needs_explanation", "需要家人讲解"),
+    )
+
+    id = models.AutoField(primary_key=True)
+    package_item = models.ForeignKey(
+        ReviewPackageItem,
+        on_delete=models.CASCADE,
+        related_name="feedbacks",
+        verbose_name="资料包条目"
+    )
+    elderly_user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="review_feedbacks",
+        verbose_name="反馈老人"
+    )
+    feedback_type = models.CharField(
+        max_length=30,
+        choices=FEEDBACK_TYPE_CHOICES,
+        verbose_name="反馈类型"
+    )
+    note = models.TextField(blank=True, null=True, verbose_name="补充说明")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="反馈时间")
+
+    class Meta:
+        db_table = "review_package_feedback"
+        verbose_name = "资料包反馈"
+        verbose_name_plural = "资料包反馈"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.elderly_user} - {self.get_feedback_type_display()}"
+
+
 class FollowUpItem(models.Model):
     STATUS_CHOICES = (
         ("pending", "待处理"),
@@ -155,6 +255,7 @@ class FollowUpItem(models.Model):
     SOURCE_TYPE_CHOICES = (
         ("manual", "手动创建"),
         ("confirmation", "确认催办"),
+        ("review_package", "资料包讲解需求"),
     )
 
     id = models.AutoField(primary_key=True)
@@ -170,6 +271,14 @@ class FollowUpItem(models.Model):
         blank=True,
         related_name="follow_up_items",
         verbose_name="关联节目摘录"
+    )
+    review_package_item = models.ForeignKey(
+        ReviewPackageItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="follow_up_items",
+        verbose_name="关联资料包条目"
     )
     assigned_to = models.ForeignKey(
         User,

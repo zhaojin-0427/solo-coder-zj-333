@@ -10,7 +10,7 @@
         <div class="form-section">
           <h2 class="section-title">👥 家庭成员</h2>
           <div v-if="loadingMembers" class="loading-container py-8">
-            <el-loading text="加载中..." />
+            <div class="text-gray-500 text-lg">⏳ 加载中...</div>
           </div>
           <div v-else-if="members.length === 0" class="py-8">
             <el-empty description="暂无家庭成员" />
@@ -45,7 +45,7 @@
           <h2 class="section-title">📜 家庭时间线</h2>
 
           <div v-if="loadingFeed" class="loading-container py-8">
-            <el-loading text="加载中..." size="large" />
+            <div class="text-gray-500 text-lg">⏳ 加载中...</div>
           </div>
 
           <div v-else-if="feedItems.length === 0" class="py-8">
@@ -54,41 +54,45 @@
 
           <div v-else class="timeline">
             <div
-              v-for="item in feedItems"
-              :key="item.data.id"
+              v-for="(item, idx) in feedItems"
+              :key="`${item.type}-${idx}`"
               class="timeline-item"
             >
-              <el-card class="shadow-card-hover" :body-style="{ padding: '20px' }">
+              <el-card
+                v-if="item.type === 'excerpt'"
+                class="shadow-card-hover"
+                :body-style="{ padding: '20px' }"
+              >
                 <div class="space-y-4">
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                      <span class="text-3xl">{{ getMemberAvatar(item.data.createdBy?.id) }}</span>
+                      <span class="text-3xl">{{ getMemberAvatar((item.data as ProgramExcerpt).createdBy?.id) }}</span>
                       <div>
-                        <h3 class="text-xl font-semibold">{{ item.data.programName }}</h3>
+                        <h3 class="text-xl font-semibold">{{ (item.data as ProgramExcerpt).programName }}</h3>
                         <p class="text-sm text-gray-500">
-                          <span class="font-medium">{{ getMemberName(item.data.createdBy?.id) }}</span>
+                          <span class="font-medium">{{ getMemberName((item.data as ProgramExcerpt).createdBy?.id) }}</span>
                           <span class="mx-2">·</span>
-                          📅 {{ item.data.date }} · ⏰ {{ item.data.timeSlot }}
+                          📅 {{ (item.data as ProgramExcerpt).date }} · ⏰ {{ (item.data as ProgramExcerpt).timeSlot }}
                         </p>
                       </div>
                     </div>
                     <div class="flex items-center gap-2">
                       <el-tag
-                        :type="confirmationTagType(item.data.confirmationStatus)"
+                        :type="confirmationTagType((item.data as ProgramExcerpt).confirmationStatus)"
                         size="large"
                         effect="light"
                       >
-                        {{ confirmationLabel(item.data.confirmationStatus) }}
+                        {{ confirmationLabel((item.data as ProgramExcerpt).confirmationStatus) }}
                       </el-tag>
                       <el-tag
-                        v-if="item.data.topic"
-                        :style="{ backgroundColor: item.data.topic.color + '20', color: item.data.topic.color }"
+                        v-if="(item.data as ProgramExcerpt).topic"
+                        :style="{ backgroundColor: (item.data as ProgramExcerpt).topic!.color + '20', color: (item.data as ProgramExcerpt).topic!.color }"
                         size="large"
                       >
-                        {{ item.data.topic.icon }} {{ item.data.topic.name }}
+                        {{ (item.data as ProgramExcerpt).topic!.icon }} {{ (item.data as ProgramExcerpt).topic!.name }}
                       </el-tag>
                       <el-tag
-                        v-if="item.data.isDuplicate"
+                        v-if="(item.data as ProgramExcerpt).isDuplicate"
                         type="warning"
                         size="large"
                       >
@@ -99,38 +103,38 @@
 
                   <div class="text-base text-gray-700">
                     <span class="font-medium">📝 内容摘要：</span>
-                    {{ item.data.contentSummary }}
+                    {{ (item.data as ProgramExcerpt).contentSummary }}
                   </div>
 
                   <div
-                    v-if="item.data.elderlyNotes"
+                    v-if="(item.data as ProgramExcerpt).elderlyNotes"
                     class="bg-elderly rounded-lg p-4"
                   >
                     <div class="flex items-center gap-2 mb-2">
                       <span class="text-xl">👴</span>
                       <span class="font-semibold text-primary">老人补充</span>
                     </div>
-                    <p class="text-lg text-gray-800">{{ item.data.elderlyNotes }}</p>
+                    <p class="text-lg text-gray-800">{{ (item.data as ProgramExcerpt).elderlyNotes }}</p>
                   </div>
 
                   <div
-                    v-if="item.confirmationInfo"
+                    v-if="(item as any).confirmationInfo"
                     class="p-3 rounded-lg border-l-4"
-                    :class="item.confirmationInfo.confirmationStatus === 'confirmed' ? 'bg-green-50 border-green-400' : 'bg-orange-50 border-orange-400'"
+                    :class="(item as any).confirmationInfo.confirmationStatus === 'confirmed' ? 'bg-green-50 border-green-400' : 'bg-orange-50 border-orange-400'"
                   >
                     <div class="flex items-center gap-2 mb-1">
                       <span class="font-medium text-sm">
-                        {{ item.confirmationInfo.confirmationStatus === 'confirmed' ? '✅ 已确认' : '❗ 需核实' }}
+                        {{ (item as any).confirmationInfo.confirmationStatus === 'confirmed' ? '✅ 已确认' : '❗ 需核实' }}
                       </span>
                       <span class="text-sm text-gray-500">
-                        确认人：{{ item.confirmationInfo.confirmedByName }}
+                        确认人：{{ (item as any).confirmationInfo.confirmedByName }}
                       </span>
                       <span class="text-sm text-gray-400">
-                        · {{ formatTime(item.confirmationInfo.confirmedAt) }}
+                        · {{ formatTime((item as any).confirmationInfo.confirmedAt) }}
                       </span>
                     </div>
-                    <p v-if="item.confirmationInfo.confirmationNote" class="text-sm text-gray-600 mt-1">
-                      备注：{{ item.confirmationInfo.confirmationNote.length > 50 ? item.confirmationInfo.confirmationNote.slice(0, 50) + '...' : item.confirmationInfo.confirmationNote }}
+                    <p v-if="(item as any).confirmationInfo.confirmationNote" class="text-sm text-gray-600 mt-1">
+                      备注：{{ (item as any).confirmationInfo.confirmationNote.length > 50 ? (item as any).confirmationInfo.confirmationNote.slice(0, 50) + '...' : (item as any).confirmationInfo.confirmationNote }}
                     </p>
                   </div>
 
@@ -138,23 +142,23 @@
 
                   <div>
                     <div class="flex items-center justify-between mb-3">
-                      <h4 class="text-lg font-semibold">💬 评论 ({{ commentsMap[item.data.id]?.length || 0 }})</h4>
+                      <h4 class="text-lg font-semibold">💬 评论 ({{ commentsMap[(item.data as ProgramExcerpt).id]?.length || 0 }})</h4>
                       <el-button
                         type="primary"
                         size="large"
-                        @click="openCommentDialog(item.data)"
+                        @click="openCommentDialog(item.data as ProgramExcerpt)"
                       >
                         ✏️ 发表评论
                       </el-button>
                     </div>
 
-                    <div v-if="loadingComments[item.data.id]" class="py-4 text-center text-gray-500">
+                    <div v-if="loadingComments[(item.data as ProgramExcerpt).id]" class="py-4 text-center text-gray-500">
                       加载评论中...
                     </div>
 
-                    <div v-else-if="commentsMap[item.data.id]?.length > 0" class="space-y-3">
+                    <div v-else-if="commentsMap[(item.data as ProgramExcerpt).id]?.length > 0" class="space-y-3">
                       <div
-                        v-for="comment in commentsMap[item.data.id]"
+                        v-for="comment in commentsMap[(item.data as ProgramExcerpt).id]"
                         :key="comment.id"
                         class="flex gap-3 p-3 bg-gray-50 rounded-lg"
                       >
@@ -174,6 +178,81 @@
                     <div v-else class="text-center py-4 text-gray-400">
                       暂无评论，快来抢沙发吧！
                     </div>
+                  </div>
+                </div>
+              </el-card>
+
+              <el-card
+                v-else-if="item.type === 'review_package'"
+                class="shadow-card-hover cursor-pointer"
+                :body-style="{ padding: '20px' }"
+                @click="router.push(`/review-packages/${(item.data as ReviewPackage).id}`)"
+              >
+                <div class="flex items-start justify-between">
+                  <div class="flex items-start gap-3">
+                    <span class="text-4xl">📚</span>
+                    <div>
+                      <div class="flex items-center gap-2 mb-1">
+                        <h3 class="text-xl font-semibold">{{ (item.data as ReviewPackage).title }}</h3>
+                        <el-tag type="primary" size="large" effect="light">资料包</el-tag>
+                      </div>
+                      <p class="text-sm text-gray-500">
+                        <span class="font-medium">{{ (item.data as ReviewPackage).createdByName }}</span>
+                        <span class="mx-2">·</span>
+                        📅 {{ formatTime((item.data as ReviewPackage).createdAt) }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <el-tag size="large" type="info">
+                      📄 {{ (item.data as ReviewPackage).itemCount }} 条内容
+                    </el-tag>
+                    <el-tag size="large" type="success">
+                      💬 {{ (item.data as ReviewPackage).feedbackCount }} 条反馈
+                    </el-tag>
+                  </div>
+                </div>
+                <div v-if="(item.data as ReviewPackage).purposeDescription" class="mt-3 text-base text-gray-600 line-clamp-2">
+                  📌 {{ (item.data as ReviewPackage).purposeDescription }}
+                </div>
+                <div v-if="(item.data as ReviewPackage).guideText" class="mt-3 p-3 bg-orange-50 rounded-lg">
+                  <span class="text-sm text-orange-600">💬 {{ (item.data as ReviewPackage).guideText }}</span>
+                </div>
+                <p class="mt-3 text-sm text-primary font-medium">点击查看详情 →</p>
+              </el-card>
+
+              <el-card
+                v-else-if="item.type === 'review_package_feedback'"
+                class="shadow-card-hover cursor-pointer"
+                :body-style="{ padding: '20px' }"
+                @click="router.push(`/review-packages/${(item.data as ReviewPackageFeedItem).packageId}`)"
+              >
+                <div class="flex items-start gap-3">
+                  <span class="text-3xl">{{ (item.data as ReviewPackageFeedItem).elderlyUserAvatar || '👴' }}</span>
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-2">
+                      <h3 class="text-lg font-semibold">{{ (item.data as ReviewPackageFeedItem).elderlyUserName }}</h3>
+                      <el-tag
+                        size="large"
+                        effect="light"
+                        :type="feedbackTagType((item.data as ReviewPackageFeedItem).feedbackType)"
+                      >
+                        {{ feedbackIcon((item.data as ReviewPackageFeedItem).feedbackType) }} {{ (item.data as ReviewPackageFeedItem).feedbackTypeDisplay }}
+                      </el-tag>
+                      <span class="text-sm text-gray-500">
+                        {{ formatTime(item.createdAt) }}
+                      </span>
+                    </div>
+                    <p class="text-base text-gray-700 mb-2">
+                      对资料包「<span class="font-medium text-primary">{{ (item.data as ReviewPackageFeedItem).packageTitle }}</span>」中的内容进行了反馈
+                    </p>
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                      <p class="text-sm font-medium text-gray-700 mb-1">📻 {{ (item.data as ReviewPackageFeedItem).excerptProgramName }}</p>
+                      <p class="text-sm text-gray-600 line-clamp-1">{{ (item.data as ReviewPackageFeedItem).excerptContentSummary }}</p>
+                    </div>
+                    <p v-if="(item.data as ReviewPackageFeedItem).note" class="mt-2 text-sm text-gray-600 p-2 bg-orange-50 rounded">
+                      💭 {{ (item.data as ReviewPackageFeedItem).note }}
+                    </p>
                   </div>
                 </div>
               </el-card>
@@ -232,16 +311,19 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import type { FamilyMember, ProgramExcerpt, Comment, ConfirmationInfo } from '@/types'
+import type { FamilyMember, ProgramExcerpt, Comment, ConfirmationInfo, FeedItem, ReviewPackage, ReviewPackageFeedItem } from '@/types'
 import { familyApi, excerptApi } from '@/api'
+
+const router = useRouter()
 
 const loadingMembers = ref(false)
 const loadingFeed = ref(false)
 const submittingComment = ref(false)
 
 const members = ref<FamilyMember[]>([])
-const feedItems = ref<{ type: string; data: ProgramExcerpt; confirmationInfo?: ConfirmationInfo }[]>([])
+const feedItems = ref<FeedItem[]>([])
 
 const commentsMap = reactive<Record<number, Comment[]>>({})
 const loadingComments = reactive<Record<number, boolean>>({})
@@ -254,9 +336,11 @@ const userMap = reactive<Record<number, FamilyMember>>({})
 
 const membersWithCount = computed(() => {
   return members.value.map(member => {
-    const count = feedItems.value.filter(
-      item => item.data.createdBy?.id === member.id
-    ).length
+    let count = 0
+    feedItems.value.forEach(item => {
+      if (item.type === 'excerpt' && item.data.createdBy?.id === member.id) count++
+      if (item.type === 'review_package' && (item.data as ReviewPackage).createdBy?.id === member.id) count++
+    })
     return {
       ...member,
       contributionCount: count
@@ -292,6 +376,24 @@ const confirmationLabel = (status: string) => {
     needs_verification: '❗ 需核实'
   }
   return map[status] || status
+}
+
+const feedbackTagType = (type: string) => {
+  const map: Record<string, string> = {
+    read: 'success',
+    review_again: 'warning',
+    needs_explanation: 'danger'
+  }
+  return map[type] || 'info'
+}
+
+const feedbackIcon = (type: string) => {
+  const map: Record<string, string> = {
+    read: '✅',
+    review_again: '🔄',
+    needs_explanation: '❓'
+  }
+  return map[type] || '📝'
 }
 
 const getMemberAvatar = (userId?: number) => {

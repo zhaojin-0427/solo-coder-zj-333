@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Topic, ProgramExcerpt, Version, Comment, FollowUpItem
+from .models import (
+    Topic, ProgramExcerpt, Version, Comment, FollowUpItem,
+    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback
+)
 
 
 @admin.register(Topic)
@@ -48,11 +51,36 @@ class FollowUpItemAdmin(admin.ModelAdmin):
         "title",
         "status",
         "priority",
+        "source_type",
         "excerpt",
         "assigned_to",
         "due_date",
         "created_at",
     )
-    list_filter = ("status", "priority", "due_date", "assigned_to")
+    list_filter = ("status", "priority", "source_type", "due_date", "assigned_to")
     search_fields = ("title", "description")
-    raw_id_fields = ("excerpt", "assigned_to")
+    raw_id_fields = ("excerpt", "review_package_item", "assigned_to")
+
+
+@admin.register(ReviewPackage)
+class ReviewPackageAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "created_by", "family_group", "created_at", "updated_at")
+    list_filter = ("created_at", "family_group", "created_by")
+    search_fields = ("title", "purpose_description", "guide_text")
+    raw_id_fields = ("created_by", "family_group")
+
+
+@admin.register(ReviewPackageItem)
+class ReviewPackageItemAdmin(admin.ModelAdmin):
+    list_display = ("id", "review_package", "excerpt", "order_index", "is_highlighted", "created_at")
+    list_filter = ("is_highlighted", "created_at")
+    search_fields = ("family_reminder",)
+    raw_id_fields = ("review_package", "excerpt")
+
+
+@admin.register(ReviewPackageFeedback)
+class ReviewPackageFeedbackAdmin(admin.ModelAdmin):
+    list_display = ("id", "package_item", "elderly_user", "feedback_type", "created_at")
+    list_filter = ("feedback_type", "created_at")
+    search_fields = ("note",)
+    raw_id_fields = ("package_item", "elderly_user")

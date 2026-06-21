@@ -167,7 +167,7 @@
 
       <el-col :xs="24" :lg="16">
         <div v-if="loading" class="loading-container">
-          <el-loading text="加载中..." size="large" />
+          <div class="text-gray-500 text-lg">⏳ 加载中...</div>
         </div>
 
         <div v-else-if="excerpts.length === 0" class="loading-container">
