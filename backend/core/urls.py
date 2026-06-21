@@ -7,6 +7,8 @@ from .views import (
     FollowUpItemViewSet,
     ReviewPackageViewSet,
     ReviewPackageItemViewSet,
+    CompanionPlanViewSet,
+    CompanionPlanMaterialViewSet,
     FamilyMembersView,
     FamilyFeedView,
     StatisticsView,
@@ -19,6 +21,8 @@ router.register(r"comments", CommentViewSet, basename="comment")
 router.register(r"followups", FollowUpItemViewSet, basename="followup")
 router.register(r"review-packages", ReviewPackageViewSet, basename="review-package")
 router.register(r"review-package-items", ReviewPackageItemViewSet, basename="review-package-item")
+router.register(r"companion-plans", CompanionPlanViewSet, basename="companion-plan")
+router.register(r"companion-plan-materials", CompanionPlanMaterialViewSet, basename="companion-plan-material")
 
 urlpatterns = [
     path("", include(router.urls)),

@@ -73,6 +73,33 @@
         </el-col>
       </el-row>
 
+      <el-row :gutter="24" class="mb-6">
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-orange">{{ statistics?.companionPlanStats?.totalPlans || 0 }}</div>
+            <div class="stat-label">🤝 陪办计划总数</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-green">{{ materialPreparedPercent }}%</div>
+            <div class="stat-label">✅ 材料准备完成率</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-yellow">{{ statistics?.companionPlanStats?.pending7d || 0 }}</div>
+            <div class="stat-label">⏰ 近7天待办理</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-purple">{{ statistics?.companionPlanStats?.topLocations?.length || 0 }}</div>
+            <div class="stat-label">📍 高频办理地点数</div>
+          </div>
+        </el-col>
+      </el-row>
+
       <el-row :gutter="24">
         <el-col :xs="24" :lg="12" class="mb-6">
           <el-card class="shadow-card" :body-style="{ padding: '24px' }">
@@ -202,6 +229,24 @@
             <div ref="feedbackChartRef" class="chart-container"></div>
           </el-card>
         </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">🤝 陪办计划状态分布</h3>
+            </template>
+            <div ref="companionStatusChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">📍 高频办理地点 TOP 5</h3>
+            </template>
+            <div ref="topLocationsChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
       </el-row>
     </div>
   </div>
@@ -225,6 +270,8 @@ const trendChartRef = ref<HTMLElement | null>(null)
 const confirmationPieRef = ref<HTMLElement | null>(null)
 const packageTopicChartRef = ref<HTMLElement | null>(null)
 const feedbackChartRef = ref<HTMLElement | null>(null)
+const companionStatusChartRef = ref<HTMLElement | null>(null)
+const topLocationsChartRef = ref<HTMLElement | null>(null)
 
 let barChart: echarts.ECharts | null = null
 let pieChart: echarts.ECharts | null = null
@@ -233,6 +280,8 @@ let trendChart: echarts.ECharts | null = null
 let confirmationPie: echarts.ECharts | null = null
 let packageTopicChart: echarts.ECharts | null = null
 let feedbackChart: echarts.ECharts | null = null
+let companionStatusChart: echarts.ECharts | null = null
+let topLocationsChart: echarts.ECharts | null = null
 
 const totalConfirmation = computed(() => {
   if (!statistics.value?.confirmationStatus) return 0
@@ -253,6 +302,10 @@ const confirmedPercent = computed(() => {
 const needsVerificationPercent = computed(() => {
   if (totalConfirmation.value === 0) return 0
   return Math.round((statistics.value?.confirmationStatus?.needsVerification || 0) / totalConfirmation.value * 100)
+})
+
+const materialPreparedPercent = computed(() => {
+  return Math.round((statistics.value?.companionPlanStats?.materialPreparedRate || 0) * 100)
 })
 
 const initBarChart = () => {
@@ -792,6 +845,173 @@ const initFeedbackChart = () => {
   feedbackChart.setOption(option)
 }
 
+const initCompanionStatusChart = () => {
+  if (!companionStatusChartRef.value || !statistics.value) return
+
+  if (companionStatusChart) {
+    companionStatusChart.dispose()
+  }
+
+  companionStatusChart = echarts.init(companionStatusChartRef.value)
+
+  const sd = statistics.value.companionPlanStats?.statusDistribution || {
+    pending: 0,
+    preparing: 0,
+    scheduled: 0,
+    completed: 0,
+    cancelled: 0
+  }
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} 个 ({d}%)'
+    },
+    legend: {
+      orient: 'horizontal',
+      bottom: '5%',
+      itemWidth: 20,
+      itemHeight: 20,
+      textStyle: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: '陪办计划状态',
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['50%', '45%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: '#fff',
+          borderWidth: 2
+        },
+        label: {
+          show: true,
+          formatter: '{b}\n{c} 个',
+          fontSize: 14
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 16,
+            fontWeight: 'bold'
+          }
+        },
+        data: [
+          {
+            value: sd.pending,
+            name: '待办理',
+            itemStyle: {
+              color: '#FAAD14'
+            }
+          },
+          {
+            value: sd.preparing,
+            name: '准备中',
+            itemStyle: {
+              color: '#1890FF'
+            }
+          },
+          {
+            value: sd.scheduled,
+            name: '已预约',
+            itemStyle: {
+              color: '#722ED1'
+            }
+          },
+          {
+            value: sd.completed,
+            name: '已完成',
+            itemStyle: {
+              color: '#52C41A'
+            }
+          },
+          {
+            value: sd.cancelled,
+            name: '已取消',
+            itemStyle: {
+              color: '#999999'
+            }
+          }
+        ]
+      }
+    ]
+  }
+
+  companionStatusChart.setOption(option)
+}
+
+const initTopLocationsChart = () => {
+  if (!topLocationsChartRef.value || !statistics.value) return
+
+  if (topLocationsChart) {
+    topLocationsChart.dispose()
+  }
+
+  topLocationsChart = echarts.init(topLocationsChartRef.value)
+
+  const data = statistics.value.companionPlanStats?.topLocations || []
+  const locations = data.map(item => item.location).reverse()
+  const counts = data.map(item => item.count).reverse()
+
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      },
+      formatter: '{b}: {c} 次'
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      top: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'value',
+      axisLabel: {
+        fontSize: 14
+      },
+      minInterval: 1
+    },
+    yAxis: {
+      type: 'category',
+      data: locations,
+      axisLabel: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: '办理次数',
+        type: 'bar',
+        data: counts,
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: '#FF9966' },
+            { offset: 1, color: '#FF7A45' }
+          ]),
+          borderRadius: [0, 8, 8, 0]
+        },
+        barWidth: '50%',
+        label: {
+          show: true,
+          position: 'right',
+          fontSize: 14,
+          fontWeight: 'bold'
+        }
+      }
+    ]
+  }
+
+  topLocationsChart.setOption(option)
+}
+
 const initCharts = () => {
   nextTick(() => {
     initBarChart()
@@ -801,6 +1021,8 @@ const initCharts = () => {
     initConfirmationPie()
     initPackageTopicChart()
     initFeedbackChart()
+    initCompanionStatusChart()
+    initTopLocationsChart()
   })
 }
 
@@ -828,6 +1050,8 @@ const handleResize = () => {
   confirmationPie?.resize()
   packageTopicChart?.resize()
   feedbackChart?.resize()
+  companionStatusChart?.resize()
+  topLocationsChart?.resize()
 }
 
 watch(
@@ -853,5 +1077,7 @@ onUnmounted(() => {
   confirmationPie?.dispose()
   packageTopicChart?.dispose()
   feedbackChart?.dispose()
+  companionStatusChart?.dispose()
+  topLocationsChart?.dispose()
 })
 </script>

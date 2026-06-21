@@ -16,7 +16,9 @@ import type {
   ReviewPackage,
   ReviewPackageItem,
   ReviewPackageFeedback,
-  FeedItem
+  FeedItem,
+  CompanionPlan,
+  CompanionPlanMaterial
 } from '@/types'
 
 const baseURL = 'http://localhost:8000/api'
@@ -193,7 +195,7 @@ export const followUpApi = {
     return api.get(`/followups/${query}`)
   },
 
-  create: (data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null }): Promise<FollowUpItem> =>
+  create: (data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null; companionPlanId?: number | null }): Promise<FollowUpItem> =>
     api.post('/followups/', {
       title: data.title,
       description: data.description,
@@ -201,11 +203,12 @@ export const followUpApi = {
       priority: data.priority,
       excerptId: data.excerptId,
       reviewPackageItemId: data.reviewPackageItemId,
+      companionPlanId: data.companionPlanId,
       assignedToId: data.assignedToId ?? (typeof data.assignedTo === 'object' ? data.assignedTo?.id : data.assignedTo),
       dueDate: data.dueDate
     }),
 
-  update: (id: number, data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null }): Promise<FollowUpItem> =>
+  update: (id: number, data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null; companionPlanId?: number | null }): Promise<FollowUpItem> =>
     api.put(`/followups/${id}/`, {
       title: data.title,
       description: data.description,
@@ -213,12 +216,103 @@ export const followUpApi = {
       priority: data.priority,
       excerptId: data.excerptId,
       reviewPackageItemId: data.reviewPackageItemId,
+      companionPlanId: data.companionPlanId,
       assignedToId: data.assignedToId ?? (typeof data.assignedTo === 'object' ? data.assignedTo?.id : data.assignedTo),
       dueDate: data.dueDate
     }),
 
   updateStatus: (id: number, status: string): Promise<FollowUpItem> =>
     api.put(`/followups/${id}/`, { status })
+}
+
+export const companionPlanApi = {
+  getList: (status?: string): Promise<CompanionPlan[]> => {
+    const query = status ? `?status=${status}` : ''
+    return api.get(`/companion-plans/${query}`)
+  },
+
+  getDetail: (id: number): Promise<CompanionPlan> =>
+    api.get(`/companion-plans/${id}/`),
+
+  create: (data: {
+    title: string
+    handleLocation: string
+    sourceType?: 'excerpt' | 'topic' | 'manual'
+    sourceExcerptId?: number | null
+    sourceTopicId?: number | null
+    sourceExcerptContent?: string | null
+    handleTimeStart?: string | null
+    handleTimeEnd?: string | null
+    handleTimeNote?: string | null
+    transportation?: 'walk' | 'bus' | 'subway' | 'taxi' | 'private_car' | 'community_shuttle' | 'other' | null
+    transportationNote?: string | null
+    companionUserId?: number | null
+    elderlyNotes?: string | null
+    materials?: { name: string; description?: string | null; orderIndex?: number }[]
+    status?: 'pending' | 'preparing' | 'scheduled' | 'completed' | 'cancelled'
+  }): Promise<CompanionPlan> =>
+    api.post('/companion-plans/', {
+      title: data.title,
+      handleLocation: data.handleLocation,
+      sourceType: data.sourceType,
+      sourceExcerptId: data.sourceExcerptId,
+      sourceTopicId: data.sourceTopicId,
+      sourceExcerptContent: data.sourceExcerptContent,
+      handleTimeStart: data.handleTimeStart,
+      handleTimeEnd: data.handleTimeEnd,
+      handleTimeNote: data.handleTimeNote,
+      transportation: data.transportation,
+      transportationNote: data.transportationNote,
+      companionUserId: data.companionUserId,
+      elderlyNotes: data.elderlyNotes,
+      materials: data.materials,
+      status: data.status
+    }),
+
+  update: (id: number, data: {
+    title?: string
+    handleLocation?: string
+    sourceType?: 'excerpt' | 'topic' | 'manual'
+    sourceExcerptId?: number | null
+    sourceTopicId?: number | null
+    sourceExcerptContent?: string | null
+    handleTimeStart?: string | null
+    handleTimeEnd?: string | null
+    handleTimeNote?: string | null
+    transportation?: 'walk' | 'bus' | 'subway' | 'taxi' | 'private_car' | 'community_shuttle' | 'other' | null
+    transportationNote?: string | null
+    companionUserId?: number | null
+    elderlyNotes?: string | null
+    elderlyConcerns?: string | null
+    status?: 'pending' | 'preparing' | 'scheduled' | 'completed' | 'cancelled'
+    materialsConfirmed?: boolean
+    timeLocationKnown?: boolean
+    needsCompanion?: boolean
+    materials?: { name: string; description?: string | null; orderIndex?: number }[]
+  }): Promise<CompanionPlan> =>
+    api.put(`/companion-plans/${id}/`, data),
+
+  remove: (id: number): Promise<void> =>
+    api.delete(`/companion-plans/${id}/`),
+
+  elderlyCheckin: (id: number, data: {
+    materialsConfirmed?: boolean
+    timeLocationKnown?: boolean
+    needsCompanion?: boolean
+    elderlyConcerns?: string | null
+    materialIds?: number[]
+  }): Promise<CompanionPlan> =>
+    api.post(`/companion-plans/${id}/elderly-checkin/`, data),
+
+  getMaterials: (planId?: number): Promise<CompanionPlanMaterial[]> => {
+    const query = planId ? `?plan_id=${planId}` : ''
+    return api.get(`/companion-plan-materials/${query}`)
+  },
+
+  updateMaterialStatus: (materialId: number, isPrepared: boolean): Promise<CompanionPlanMaterial> =>
+    api.post(`/companion-plan-materials/${materialId}/update-status/`, {
+      isPrepared
+    })
 }
 
 export const reviewPackageApi = {

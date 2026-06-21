@@ -35,6 +35,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: '资料包详情' }
   },
   {
+    path: '/companion-plans',
+    name: 'companion-plans',
+    component: () => import('@/pages/CompanionPlansPage.vue'),
+    meta: { requiresAuth: true, title: '陪办计划' }
+  },
+  {
+    path: '/companion-plans/:id',
+    name: 'companion-plan-detail',
+    component: () => import('@/pages/CompanionPlanDetailPage.vue'),
+    meta: { requiresAuth: true, title: '陪办计划详情' }
+  },
+  {
     path: '/family',
     name: 'family',
     component: () => import('@/pages/FamilyPage.vue'),

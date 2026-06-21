@@ -85,6 +85,22 @@
               >
                 📚 资料包讲解需求
               </el-tag>
+              <el-tag
+                v-if="item.sourceType === 'companion_plan'"
+                type="primary"
+                size="large"
+                effect="light"
+              >
+                🤝 陪办计划陪同
+              </el-tag>
+              <el-tag
+                v-if="item.sourceType === 'companion_material'"
+                type="warning"
+                size="large"
+                effect="light"
+              >
+                📋 材料确认提醒
+              </el-tag>
             </div>
 
             <p class="text-base text-gray-700 mb-3">{{ item.description }}</p>
@@ -102,14 +118,16 @@
             </div>
 
             <div
-              v-if="item.reviewPackage || item.excerpt"
+              v-if="item.reviewPackage || item.excerpt || item.companionPlan"
               class="mt-4 p-4 rounded-xl border-l-4"
-              :class="item.sourceType === 'confirmation' ? 'bg-orange-50 border-orange-400' : item.sourceType === 'review_package' ? 'bg-red-50 border-red-400' : 'bg-orange-50 border-primary'"
+              :class="item.sourceType === 'confirmation' ? 'bg-orange-50 border-orange-400' : item.sourceType === 'review_package' ? 'bg-red-50 border-red-400' : (item.sourceType === 'companion_plan' || item.sourceType === 'companion_material') ? 'bg-blue-50 border-blue-400' : 'bg-orange-50 border-primary'"
             >
               <div class="flex items-center gap-2 mb-2">
                 <p class="text-sm text-gray-500">
                   <span v-if="item.sourceType === 'confirmation'">🔗 来源摘录（确认催办）</span>
                   <span v-else-if="item.sourceType === 'review_package'">📚 来源资料包（讲解需求）</span>
+                  <span v-else-if="item.sourceType === 'companion_plan'">🤝 来源陪办计划（陪同需求）</span>
+                  <span v-else-if="item.sourceType === 'companion_material'">📋 来源陪办计划（材料确认）</span>
                   <span v-else>关联节目</span>
                 </p>
               </div>
@@ -118,6 +136,19 @@
                 <p class="text-base font-medium text-red-700">
                   📚 {{ item.reviewPackage.title }}
                 </p>
+              </div>
+
+              <div v-if="item.companionPlan" class="mb-3 p-3 bg-white rounded-lg">
+                <p
+                  class="text-base font-medium text-primary cursor-pointer hover:underline"
+                  @click.stop="router.push(`/companion-plans/${item.companionPlan!.id}`)"
+                >
+                  🤝 {{ item.companionPlan.title }} →
+                </p>
+                <div class="flex flex-wrap gap-4 mt-2 text-sm text-gray-600">
+                  <span>📍 {{ item.companionPlan.handleLocation }}</span>
+                  <span>⏰ {{ formatCompanionPlanTime(item.companionPlan) }}</span>
+                </div>
               </div>
 
               <div v-if="item.excerpt">
@@ -252,6 +283,23 @@
             />
           </el-select>
         </el-form-item>
+
+        <el-form-item label="关联陪办计划（可选）" prop="companionPlanId">
+          <el-select
+            v-model="formData.companionPlanId"
+            placeholder="选择关联的陪办计划"
+            style="width: 100%"
+            clearable
+            filterable
+          >
+            <el-option
+              v-for="plan in companionPlans"
+              :key="plan.id"
+              :label="`🤝 ${plan.title} - ${plan.handleLocation}`"
+              :value="plan.id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -273,11 +321,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
-import type { FollowUpItem, FamilyMember, ProgramExcerpt, UserInfo } from '@/types'
-import { followUpApi, familyApi, excerptApi } from '@/api'
+import type { FollowUpItem, FamilyMember, ProgramExcerpt, UserInfo, CompanionPlan } from '@/types'
+import { followUpApi, familyApi, excerptApi, companionPlanApi } from '@/api'
+
+const router = useRouter()
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -286,6 +337,7 @@ const activeStatus = ref('')
 const followUps = ref<FollowUpItem[]>([])
 const members = ref<FamilyMember[]>([])
 const excerpts = ref<ProgramExcerpt[]>([])
+const companionPlans = ref<CompanionPlan[]>([])
 
 const userMap = reactive<Record<number, FamilyMember>>({})
 
@@ -301,7 +353,8 @@ const formData = reactive({
   status: 'pending' as 'pending' | 'in_progress' | 'completed',
   assignedTo: null as number | null,
   dueDate: today,
-  excerptId: null as number | null
+  excerptId: null as number | null,
+  companionPlanId: null as number | null
 })
 
 const formRules: FormRules = {
@@ -414,6 +467,24 @@ const loadExcerpts = async () => {
   }
 }
 
+const loadCompanionPlans = async () => {
+  try {
+    companionPlans.value = await companionPlanApi.getList()
+  } catch (error) {
+    console.error('Failed to load companion plans:', error)
+  }
+}
+
+const formatCompanionPlanTime = (plan: CompanionPlan) => {
+  if (plan.handleTimeStart && plan.handleTimeEnd) {
+    return `${plan.handleTimeStart.slice(0, 5)} - ${plan.handleTimeEnd.slice(0, 5)}`
+  }
+  if (plan.handleTimeNote) {
+    return plan.handleTimeNote
+  }
+  return '待定'
+}
+
 const openAddDialog = () => {
   formData.title = ''
   formData.description = ''
@@ -422,6 +493,7 @@ const openAddDialog = () => {
   formData.assignedTo = members.value[0]?.id || null
   formData.dueDate = today
   formData.excerptId = null
+  formData.companionPlanId = null
   addDialogVisible.value = true
 }
 
@@ -439,7 +511,8 @@ const handleSubmit = async () => {
           status: formData.status,
           assignedToId: formData.assignedTo,
           dueDate: formData.dueDate,
-          excerptId: formData.excerptId
+          excerptId: formData.excerptId,
+          companionPlanId: formData.companionPlanId
         })
         ElMessage.success('创建成功！')
         addDialogVisible.value = false
@@ -466,6 +539,7 @@ const updateStatus = async (item: FollowUpItem, status: string) => {
 onMounted(() => {
   loadMembers()
   loadExcerpts()
+  loadCompanionPlans()
   loadFollowUps()
 })
 </script>

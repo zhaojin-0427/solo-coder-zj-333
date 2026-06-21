@@ -2,7 +2,8 @@ from rest_framework import serializers
 from accounts.serializers import UserSerializer
 from .models import (
     Topic, ProgramExcerpt, Version, Comment, FollowUpItem,
-    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback
+    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback,
+    CompanionPlan, CompanionPlanMaterial
 )
 
 
@@ -322,11 +323,290 @@ class ReviewPackageFeedbackSerializer(serializers.ModelSerializer):
         return obj.elderly_user.first_name or obj.elderly_user.username
 
 
+class MergeDuplicateSerializer(serializers.Serializer):
+    duplicate_id = serializers.IntegerField()
+    merge_note = serializers.CharField(required=False, allow_blank=True)
+
+
+class ConfirmExcerptSerializer(serializers.Serializer):
+    confirmation_status = serializers.ChoiceField(choices=["confirmed", "needs_verification"])
+    confirmation_note = serializers.CharField(required=False, allow_blank=True)
+    generate_followup = serializers.BooleanField(required=False, default=False)
+
+
+class CompanionPlanMaterialSerializer(serializers.ModelSerializer):
+    prepared_by = UserSerializer(read_only=True)
+    prepared_by_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    prepared_by_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CompanionPlanMaterial
+        fields = (
+            "id",
+            "name",
+            "description",
+            "is_prepared",
+            "prepared_by",
+            "prepared_by_id",
+            "prepared_by_name",
+            "prepared_at",
+            "order_index",
+            "created_at",
+        )
+        read_only_fields = ("id", "created_at", "prepared_by", "prepared_at")
+
+    def get_prepared_by_name(self, obj):
+        if obj.prepared_by:
+            return obj.prepared_by.first_name or obj.prepared_by.username
+        return None
+
+
+class CompanionPlanMaterialCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    order_index = serializers.IntegerField(required=False, default=0)
+
+
+class CompanionPlanListSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+    companion_user = UserSerializer(read_only=True)
+    companion_user_name = serializers.SerializerMethodField(read_only=True)
+    source_excerpt = ProgramExcerptListSerializer(read_only=True)
+    source_topic = TopicSerializer(read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    source_type_display = serializers.CharField(source="get_source_type_display", read_only=True)
+    transportation_display = serializers.SerializerMethodField(read_only=True)
+    material_count = serializers.SerializerMethodField(read_only=True)
+    prepared_material_count = serializers.SerializerMethodField(read_only=True)
+    material_prepared_rate = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CompanionPlan
+        fields = (
+            "id",
+            "title",
+            "source_type",
+            "source_type_display",
+            "source_excerpt",
+            "source_topic",
+            "source_excerpt_content",
+            "handle_location",
+            "handle_time_start",
+            "handle_time_end",
+            "handle_time_note",
+            "transportation",
+            "transportation_display",
+            "transportation_note",
+            "companion_user",
+            "companion_user_name",
+            "elderly_notes",
+            "elderly_concerns",
+            "status",
+            "status_display",
+            "materials_confirmed",
+            "time_location_known",
+            "needs_companion",
+            "created_by",
+            "created_by_name",
+            "material_count",
+            "prepared_material_count",
+            "material_prepared_rate",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "created_by", "materials_confirmed", "time_location_known", "needs_companion")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.first_name or obj.created_by.username
+
+    def get_companion_user_name(self, obj):
+        if obj.companion_user:
+            return obj.companion_user.first_name or obj.companion_user.username
+        return None
+
+    def get_transportation_display(self, obj):
+        if obj.transportation:
+            return obj.get_transportation_display()
+        return None
+
+    def get_material_count(self, obj):
+        return obj.materials.count()
+
+    def get_prepared_material_count(self, obj):
+        return obj.materials.filter(is_prepared=True).count()
+
+    def get_material_prepared_rate(self, obj):
+        total = obj.materials.count()
+        if total == 0:
+            return 0
+        prepared = obj.materials.filter(is_prepared=True).count()
+        return round(prepared / total, 2)
+
+
+class CompanionPlanDetailSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+    companion_user = UserSerializer(read_only=True)
+    companion_user_name = serializers.SerializerMethodField(read_only=True)
+    companion_user_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    source_excerpt = ProgramExcerptListSerializer(read_only=True)
+    source_excerpt_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    source_topic = TopicSerializer(read_only=True)
+    source_topic_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    source_type_display = serializers.CharField(source="get_source_type_display", read_only=True)
+    transportation_display = serializers.SerializerMethodField(read_only=True)
+    materials = CompanionPlanMaterialSerializer(many=True, read_only=True)
+    material_count = serializers.SerializerMethodField(read_only=True)
+    prepared_material_count = serializers.SerializerMethodField(read_only=True)
+    material_prepared_rate = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CompanionPlan
+        fields = (
+            "id",
+            "title",
+            "source_type",
+            "source_type_display",
+            "source_excerpt",
+            "source_excerpt_id",
+            "source_topic",
+            "source_topic_id",
+            "source_excerpt_content",
+            "handle_location",
+            "handle_time_start",
+            "handle_time_end",
+            "handle_time_note",
+            "transportation",
+            "transportation_display",
+            "transportation_note",
+            "companion_user",
+            "companion_user_id",
+            "companion_user_name",
+            "elderly_notes",
+            "elderly_concerns",
+            "status",
+            "status_display",
+            "materials_confirmed",
+            "time_location_known",
+            "needs_companion",
+            "created_by",
+            "created_by_name",
+            "materials",
+            "material_count",
+            "prepared_material_count",
+            "material_prepared_rate",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "created_by", "materials")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.first_name or obj.created_by.username
+
+    def get_companion_user_name(self, obj):
+        if obj.companion_user:
+            return obj.companion_user.first_name or obj.companion_user.username
+        return None
+
+    def get_transportation_display(self, obj):
+        if obj.transportation:
+            return obj.get_transportation_display()
+        return None
+
+    def get_material_count(self, obj):
+        return obj.materials.count()
+
+    def get_prepared_material_count(self, obj):
+        return obj.materials.filter(is_prepared=True).count()
+
+    def get_material_prepared_rate(self, obj):
+        total = obj.materials.count()
+        if total == 0:
+            return 0
+        prepared = obj.materials.filter(is_prepared=True).count()
+        return round(prepared / total, 2)
+
+
+class CompanionPlanCreateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=200)
+    source_type = serializers.ChoiceField(choices=["excerpt", "topic", "manual"], required=False, default="manual")
+    source_excerpt_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    source_topic_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    source_excerpt_content = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    handle_location = serializers.CharField(max_length=300)
+    handle_time_start = serializers.DateField(required=False, allow_null=True)
+    handle_time_end = serializers.DateField(required=False, allow_null=True)
+    handle_time_note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    transportation = serializers.ChoiceField(
+        choices=["walk", "bus", "subway", "taxi", "private_car", "community_shuttle", "other"],
+        required=False, allow_null=True
+    )
+    transportation_note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    companion_user_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    elderly_notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    materials = serializers.ListField(
+        child=CompanionPlanMaterialCreateSerializer(),
+        required=False,
+        default=list
+    )
+    status = serializers.ChoiceField(
+        choices=["pending", "preparing", "scheduled", "completed", "cancelled"],
+        required=False, default="pending"
+    )
+
+
+class CompanionPlanUpdateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=200, required=False)
+    source_type = serializers.ChoiceField(choices=["excerpt", "topic", "manual"], required=False)
+    source_excerpt_id = serializers.IntegerField(required=False, allow_null=True)
+    source_topic_id = serializers.IntegerField(required=False, allow_null=True)
+    source_excerpt_content = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    handle_location = serializers.CharField(max_length=300, required=False)
+    handle_time_start = serializers.DateField(required=False, allow_null=True)
+    handle_time_end = serializers.DateField(required=False, allow_null=True)
+    handle_time_note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    transportation = serializers.ChoiceField(
+        choices=["walk", "bus", "subway", "taxi", "private_car", "community_shuttle", "other"],
+        required=False, allow_null=True
+    )
+    transportation_note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    companion_user_id = serializers.IntegerField(required=False, allow_null=True)
+    elderly_notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    elderly_concerns = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    status = serializers.ChoiceField(
+        choices=["pending", "preparing", "scheduled", "completed", "cancelled"],
+        required=False
+    )
+    materials_confirmed = serializers.BooleanField(required=False)
+    time_location_known = serializers.BooleanField(required=False)
+    needs_companion = serializers.BooleanField(required=False)
+    materials = serializers.ListField(
+        child=CompanionPlanMaterialCreateSerializer(),
+        required=False
+    )
+
+
+class ElderlyCheckInSerializer(serializers.Serializer):
+    materials_confirmed = serializers.BooleanField(required=False)
+    time_location_known = serializers.BooleanField(required=False)
+    needs_companion = serializers.BooleanField(required=False)
+    elderly_concerns = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    material_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
+
+
+class UpdateMaterialStatusSerializer(serializers.Serializer):
+    is_prepared = serializers.BooleanField()
+
+
 class FollowUpItemSerializer(serializers.ModelSerializer):
     excerpt = ProgramExcerptListSerializer(read_only=True)
     excerpt_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     review_package_item = ReviewPackageItemSerializer(read_only=True)
     review_package_item_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    companion_plan = CompanionPlanListSerializer(read_only=True)
+    companion_plan_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     assigned_to = UserSerializer(read_only=True)
     assigned_to_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
@@ -351,6 +631,8 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
             "excerpt_id",
             "review_package_item",
             "review_package_item_id",
+            "companion_plan",
+            "companion_plan_id",
             "review_package",
             "assigned_to",
             "assigned_to_id",
@@ -358,7 +640,7 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
             "due_date",
             "created_at",
         )
-        read_only_fields = ("id", "created_at", "excerpt", "review_package_item", "review_package", "assigned_to", "source_type")
+        read_only_fields = ("id", "created_at", "excerpt", "review_package_item", "companion_plan", "review_package", "assigned_to", "source_type")
 
     def get_assigned_to_name(self, obj):
         if obj.assigned_to:
@@ -373,14 +655,3 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
                 "title": package.title,
             }
         return None
-
-
-class MergeDuplicateSerializer(serializers.Serializer):
-    duplicate_id = serializers.IntegerField()
-    merge_note = serializers.CharField(required=False, allow_blank=True)
-
-
-class ConfirmExcerptSerializer(serializers.Serializer):
-    confirmation_status = serializers.ChoiceField(choices=["confirmed", "needs_verification"])
-    confirmation_note = serializers.CharField(required=False, allow_blank=True)
-    generate_followup = serializers.BooleanField(required=False, default=False)

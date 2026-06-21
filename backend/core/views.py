@@ -10,7 +10,8 @@ from accounts.models import User
 
 from .models import (
     Topic, ProgramExcerpt, Comment, FollowUpItem,
-    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback
+    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback,
+    CompanionPlan, CompanionPlanMaterial
 )
 from .serializers import (
     TopicSerializer,
@@ -30,10 +31,17 @@ from .serializers import (
     SubmitFeedbackSerializer,
     ReviewPackageFeedbackSerializer,
     ReviewPackageItemSerializer,
+    CompanionPlanListSerializer,
+    CompanionPlanDetailSerializer,
+    CompanionPlanCreateSerializer,
+    CompanionPlanUpdateSerializer,
+    CompanionPlanMaterialSerializer,
+    ElderlyCheckInSerializer,
+    UpdateMaterialStatusSerializer,
 )
 from .services import (
     StatisticsService, ProgramExcerptService, ConfirmationService,
-    ReviewPackageService
+    ReviewPackageService, CompanionPlanService
 )
 
 
@@ -204,7 +212,8 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 Q(assigned_to__family_group_id=family_group_id) |
                 Q(excerpt__created_by__family_group_id=family_group_id) |
-                Q(review_package_item__review_package__family_group_id=family_group_id)
+                Q(review_package_item__review_package__family_group_id=family_group_id) |
+                Q(companion_plan__family_group_id=family_group_id)
             )
 
         status_filter = self.request.query_params.get("status")
@@ -217,6 +226,7 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
         excerpt_id = serializer.validated_data.get("excerpt_id")
         assigned_to_id = serializer.validated_data.get("assigned_to_id")
         review_package_item_id = serializer.validated_data.get("review_package_item_id")
+        companion_plan_id = serializer.validated_data.get("companion_plan_id")
 
         kwargs = {}
         if excerpt_id:
@@ -225,6 +235,8 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
             kwargs["assigned_to"] = get_object_or_404(User, id=assigned_to_id)
         if review_package_item_id:
             kwargs["review_package_item"] = get_object_or_404(ReviewPackageItem, id=review_package_item_id)
+        if companion_plan_id:
+            kwargs["companion_plan"] = get_object_or_404(CompanionPlan, id=companion_plan_id)
 
         serializer.save(**kwargs)
 
@@ -232,6 +244,7 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
         excerpt_id = serializer.validated_data.get("excerpt_id")
         assigned_to_id = serializer.validated_data.get("assigned_to_id")
         review_package_item_id = serializer.validated_data.get("review_package_item_id")
+        companion_plan_id = serializer.validated_data.get("companion_plan_id")
 
         kwargs = {}
         if excerpt_id:
@@ -240,8 +253,155 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
             kwargs["assigned_to"] = get_object_or_404(User, id=assigned_to_id)
         if review_package_item_id:
             kwargs["review_package_item"] = get_object_or_404(ReviewPackageItem, id=review_package_item_id)
+        if companion_plan_id:
+            kwargs["companion_plan"] = get_object_or_404(CompanionPlan, id=companion_plan_id)
 
         serializer.save(**kwargs)
+
+
+class CompanionPlanViewSet(viewsets.ModelViewSet):
+    queryset = CompanionPlan.objects.all()
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "put", "delete"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return CompanionPlanListSerializer
+        return CompanionPlanDetailSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        family_group_id = self.request.user.family_group_id
+        if family_group_id:
+            queryset = queryset.filter(family_group_id=family_group_id)
+
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        return queryset.order_by("-handle_time_start", "-created_at")
+
+    def create(self, request, *args, **kwargs):
+        serializer = CompanionPlanCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            plan = CompanionPlanService.create_plan(
+                user=request.user,
+                title=serializer.validated_data["title"],
+                handle_location=serializer.validated_data["handle_location"],
+                source_type=serializer.validated_data.get("source_type", "manual"),
+                source_excerpt_id=serializer.validated_data.get("source_excerpt_id"),
+                source_topic_id=serializer.validated_data.get("source_topic_id"),
+                source_excerpt_content=serializer.validated_data.get("source_excerpt_content"),
+                handle_time_start=serializer.validated_data.get("handle_time_start"),
+                handle_time_end=serializer.validated_data.get("handle_time_end"),
+                handle_time_note=serializer.validated_data.get("handle_time_note"),
+                transportation=serializer.validated_data.get("transportation"),
+                transportation_note=serializer.validated_data.get("transportation_note"),
+                companion_user_id=serializer.validated_data.get("companion_user_id"),
+                elderly_notes=serializer.validated_data.get("elderly_notes"),
+                materials=serializer.validated_data.get("materials", []),
+                status=serializer.validated_data.get("status", "pending"),
+            )
+            detail_serializer = CompanionPlanDetailSerializer(plan)
+            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    def update(self, request, *args, **kwargs):
+        plan = self.get_object()
+        serializer = CompanionPlanUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            plan = CompanionPlanService.update_plan(
+                plan=plan,
+                user=request.user,
+                **serializer.validated_data
+            )
+            detail_serializer = CompanionPlanDetailSerializer(plan)
+            return Response(detail_serializer.data)
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=["post"], url_path="elderly-checkin")
+    def elderly_checkin(self, request, pk=None):
+        plan = self.get_object()
+        serializer = ElderlyCheckInSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            plan, follow_up_item = CompanionPlanService.elderly_checkin(
+                plan=plan,
+                elderly_user=request.user,
+                materials_confirmed=serializer.validated_data.get("materials_confirmed"),
+                time_location_known=serializer.validated_data.get("time_location_known"),
+                needs_companion=serializer.validated_data.get("needs_companion"),
+                elderly_concerns=serializer.validated_data.get("elderly_concerns"),
+                material_ids=serializer.validated_data.get("material_ids", []),
+            )
+            result = CompanionPlanDetailSerializer(plan).data
+            if follow_up_item:
+                result["generated_followup"] = FollowUpItemSerializer(follow_up_item).data
+            return Response(result)
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class CompanionPlanMaterialViewSet(viewsets.ModelViewSet):
+    queryset = CompanionPlanMaterial.objects.all()
+    serializer_class = CompanionPlanMaterialSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "put", "patch", "delete"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        family_group_id = self.request.user.family_group_id
+        if family_group_id:
+            queryset = queryset.filter(companion_plan__family_group_id=family_group_id)
+
+        plan_id = self.request.query_params.get("plan_id")
+        if plan_id:
+            queryset = queryset.filter(companion_plan_id=plan_id)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        plan_id = self.request.data.get("companion_plan_id")
+        plan = get_object_or_404(CompanionPlan, id=plan_id)
+        serializer.save(companion_plan=plan)
+
+    @action(detail=True, methods=["post"], url_path="update-status")
+    def update_status(self, request, pk=None):
+        material = self.get_object()
+        serializer = UpdateMaterialStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            material, follow_up_item = CompanionPlanService.update_material_status(
+                material=material,
+                user=request.user,
+                is_prepared=serializer.validated_data["is_prepared"],
+            )
+            result = CompanionPlanMaterialSerializer(material).data
+            if follow_up_item:
+                result["generated_followup"] = FollowUpItemSerializer(follow_up_item).data
+            return Response(result)
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class ReviewPackageViewSet(viewsets.ModelViewSet):
@@ -496,9 +656,30 @@ class FamilyFeedView(views.APIView):
                 "created_at": feedback.created_at,
             })
 
+        companion_plans = CompanionPlan.objects.filter(
+            family_group_id=family_group_id
+        ).order_by("-created_at")[:20]
+
+        for plan in companion_plans:
+            item = {
+                "type": "companion_plan",
+                "data": CompanionPlanListSerializer(plan).data,
+                "created_at": plan.created_at,
+            }
+            if plan.status != "pending" or plan.materials_confirmed or plan.time_location_known or plan.needs_companion:
+                item["activity_info"] = {
+                    "status": plan.status,
+                    "status_display": plan.get_status_display(),
+                    "materials_confirmed": plan.materials_confirmed,
+                    "time_location_known": plan.time_location_known,
+                    "needs_companion": plan.needs_companion,
+                    "updated_at": plan.updated_at,
+                }
+            result.append(item)
+
         result.sort(key=lambda x: x["created_at"], reverse=True)
 
-        return Response(result[:50])
+        return Response(result[:60])
 
 
 class StatisticsView(views.APIView):

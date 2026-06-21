@@ -256,6 +256,88 @@
                   </div>
                 </div>
               </el-card>
+
+              <el-card
+                v-else-if="item.type === 'companion_plan'"
+                class="shadow-card-hover cursor-pointer"
+                :body-style="{ padding: '20px' }"
+                @click="router.push(`/companion-plans/${(item.data as CompanionPlan).id}`)"
+              >
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                      <span class="text-3xl">🤝</span>
+                      <div>
+                        <div class="flex items-center gap-2 mb-1">
+                          <h3 class="text-xl font-semibold">{{ (item.data as CompanionPlan).title }}</h3>
+                          <el-tag
+                            size="large"
+                            effect="light"
+                            :type="companionPlanStatusTagType((item.data as CompanionPlan).status)"
+                          >
+                            {{ companionPlanStatusLabel((item.data as CompanionPlan).status) }}
+                          </el-tag>
+                        </div>
+                        <p class="text-sm text-gray-500">
+                          <span class="font-medium">{{ (item.data as CompanionPlan).createdByName }}</span>
+                          <span class="mx-2">·</span>
+                          📅 {{ formatTime(item.createdAt) }}
+                        </p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <el-tag
+                        size="large"
+                        type="primary"
+                        effect="light"
+                      >
+                        {{ companionPlanSourceTypeLabel((item.data as CompanionPlan).sourceType) }}
+                      </el-tag>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-4">
+                    <div class="flex items-center gap-2 text-base text-gray-700">
+                      <span>📍</span>
+                      <span>办理地点：{{ (item.data as CompanionPlan).handleLocation }}</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-base text-gray-700">
+                      <span>⏰</span>
+                      <span>办理时间：{{ formatCompanionPlanTime(item.data as CompanionPlan) }}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-base font-medium text-gray-700">📋 材料准备进度</span>
+                      <span class="text-base text-primary font-semibold">
+                        {{ (item.data as CompanionPlan).preparedMaterialCount }}/{{ (item.data as CompanionPlan).materialCount }}
+                      </span>
+                    </div>
+                    <el-progress
+                      :percentage="Math.round((item.data as CompanionPlan).materialPreparedRate * 100)"
+                      :stroke-width="12"
+                      color="#f97316"
+                    />
+                  </div>
+
+                  <div
+                    v-if="(item as any).activityInfo"
+                    class="p-3 rounded-lg border-l-4 bg-orange-50 border-orange-400"
+                  >
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="font-medium text-sm">
+                        🔄 {{ formatCompanionPlanActivity((item as any).activityInfo as CompanionPlanFeedItem) }}
+                      </span>
+                      <span class="text-sm text-gray-400">
+                        · {{ formatTime((item as any).activityInfo.updatedAt) }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p class="text-sm text-primary font-medium">点击查看详情 →</p>
+                </div>
+              </el-card>
             </div>
           </div>
         </div>
@@ -313,7 +395,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import type { FamilyMember, ProgramExcerpt, Comment, ConfirmationInfo, FeedItem, ReviewPackage, ReviewPackageFeedItem } from '@/types'
+import type { FamilyMember, ProgramExcerpt, Comment, ConfirmationInfo, FeedItem, ReviewPackage, ReviewPackageFeedItem, CompanionPlan, CompanionPlanFeedItem } from '@/types'
 import { familyApi, excerptApi } from '@/api'
 
 const router = useRouter()
@@ -340,6 +422,7 @@ const membersWithCount = computed(() => {
     feedItems.value.forEach(item => {
       if (item.type === 'excerpt' && item.data.createdBy?.id === member.id) count++
       if (item.type === 'review_package' && (item.data as ReviewPackage).createdBy?.id === member.id) count++
+      if (item.type === 'companion_plan' && (item.data as CompanionPlan).createdBy?.id === member.id) count++
     })
     return {
       ...member,
@@ -394,6 +477,60 @@ const feedbackIcon = (type: string) => {
     needs_explanation: '❓'
   }
   return map[type] || '📝'
+}
+
+const companionPlanStatusTagType = (status: string) => {
+  const map: Record<string, string> = {
+    pending: 'info',
+    preparing: 'warning',
+    scheduled: 'primary',
+    completed: 'success',
+    cancelled: 'danger'
+  }
+  return map[status] || 'info'
+}
+
+const companionPlanStatusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '⏳ 待处理',
+    preparing: '📋 准备中',
+    scheduled: '📅 已安排',
+    completed: '✅ 已完成',
+    cancelled: '❌ 已取消'
+  }
+  return map[status] || status
+}
+
+const companionPlanSourceTypeLabel = (sourceType: string) => {
+  const map: Record<string, string> = {
+    excerpt: '📻 节目摘录',
+    topic: '📂 主题分类',
+    manual: '✍️ 手动创建'
+  }
+  return map[sourceType] || sourceType
+}
+
+const formatCompanionPlanTime = (plan: CompanionPlan) => {
+  if (plan.handleTimeStart && plan.handleTimeEnd) {
+    return `${plan.handleTimeStart.slice(0, 5)} - ${plan.handleTimeEnd.slice(0, 5)}`
+  }
+  if (plan.handleTimeNote) {
+    return plan.handleTimeNote
+  }
+  return '待定'
+}
+
+const formatCompanionPlanActivity = (activity: CompanionPlanFeedItem) => {
+  if (activity.materialsConfirmed) {
+    return '材料已确认'
+  }
+  if (activity.timeLocationKnown) {
+    return '时间地点已确认'
+  }
+  if (activity.needsCompanion) {
+    return '需要陪同'
+  }
+  return `状态更新：${activity.statusDisplay}`
 }
 
 const getMemberAvatar = (userId?: number) => {

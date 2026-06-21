@@ -160,6 +160,80 @@ export interface ReviewPackageStats {
   needsExplanationCount: number
 }
 
+export interface CompanionPlanMaterial {
+  id: number
+  name: string
+  description: string | null
+  isPrepared: boolean
+  preparedBy: UserInfo | null
+  preparedByName: string | null
+  preparedAt: string | null
+  orderIndex: number
+  createdAt: string
+}
+
+export interface CompanionPlan {
+  id: number
+  title: string
+  sourceType: 'excerpt' | 'topic' | 'manual'
+  sourceTypeDisplay: string
+  sourceExcerpt: ProgramExcerpt | null
+  sourceExcerptId?: number | null
+  sourceTopic: Topic | null
+  sourceTopicId?: number | null
+  sourceExcerptContent: string | null
+  handleLocation: string
+  handleTimeStart: string | null
+  handleTimeEnd: string | null
+  handleTimeNote: string | null
+  transportation: 'walk' | 'bus' | 'subway' | 'taxi' | 'private_car' | 'community_shuttle' | 'other' | null
+  transportationDisplay: string | null
+  transportationNote: string | null
+  companionUser: UserInfo | null
+  companionUserId?: number | null
+  companionUserName: string | null
+  elderlyNotes: string | null
+  elderlyConcerns: string | null
+  status: 'pending' | 'preparing' | 'scheduled' | 'completed' | 'cancelled'
+  statusDisplay: string
+  materialsConfirmed: boolean
+  timeLocationKnown: boolean
+  needsCompanion: boolean
+  createdBy: UserInfo | null
+  createdByName: string
+  materials?: CompanionPlanMaterial[]
+  materialCount: number
+  preparedMaterialCount: number
+  materialPreparedRate: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CompanionPlanStats {
+  totalPlans: number
+  statusDistribution: {
+    pending: number
+    preparing: number
+    scheduled: number
+    completed: number
+    cancelled: number
+  }
+  materialPreparedRate: number
+  pending7d: number
+  topLocations: { location: string; count: number }[]
+}
+
+export interface CompanionPlanFeedItem {
+  id: number
+  title: string
+  status: string
+  statusDisplay: string
+  materialsConfirmed: boolean
+  timeLocationKnown: boolean
+  needsCompanion: boolean
+  updatedAt: string
+}
+
 export interface FollowUpItem {
   id: number
   title: string
@@ -168,12 +242,14 @@ export interface FollowUpItem {
   statusDisplay: string
   priority: 'high' | 'medium' | 'low'
   priorityDisplay: string
-  sourceType: 'manual' | 'confirmation' | 'review_package'
+  sourceType: 'manual' | 'confirmation' | 'review_package' | 'companion_plan' | 'companion_material'
   sourceTypeDisplay: string
   excerpt: ProgramExcerpt | null
   excerptId?: number | null
   reviewPackageItem: ReviewPackageItem | null
   reviewPackageItemId?: number | null
+  companionPlan: CompanionPlan | null
+  companionPlanId?: number | null
   reviewPackage: { id: number; title: string } | null
   assignedTo: UserInfo | null
   assignedToId?: number | null
@@ -200,6 +276,7 @@ export interface Statistics {
   pendingConfirmationCount: number
   confirmationTrend7d: { date: string; count: number }[]
   reviewPackageStats: ReviewPackageStats
+  companionPlanStats: CompanionPlanStats
 }
 
 export interface User {
@@ -251,3 +328,4 @@ export type FeedItem =
   | { type: 'excerpt'; data: ProgramExcerpt; confirmationInfo?: ConfirmationInfo; createdAt: string }
   | { type: 'review_package'; data: ReviewPackage; createdAt: string }
   | { type: 'review_package_feedback'; data: ReviewPackageFeedItem; createdAt: string }
+  | { type: 'companion_plan'; data: CompanionPlan; activityInfo?: CompanionPlanFeedItem; createdAt: string }

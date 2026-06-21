@@ -239,6 +239,131 @@ class ReviewPackageFeedback(models.Model):
         return f"{self.elderly_user} - {self.get_feedback_type_display()}"
 
 
+class CompanionPlan(models.Model):
+    STATUS_CHOICES = (
+        ("pending", "待办理"),
+        ("preparing", "准备中"),
+        ("scheduled", "已预约"),
+        ("completed", "已完成"),
+        ("cancelled", "已取消"),
+    )
+
+    SOURCE_TYPE_CHOICES = (
+        ("excerpt", "节目摘录"),
+        ("topic", "专题内容"),
+        ("manual", "手动录入"),
+    )
+
+    TRANSPORTATION_CHOICES = (
+        ("walk", "步行"),
+        ("bus", "公交"),
+        ("subway", "地铁"),
+        ("taxi", "打车"),
+        ("private_car", "私家车"),
+        ("community_shuttle", "社区班车"),
+        ("other", "其他"),
+    )
+
+    id = models.AutoField(primary_key=True)
+    title = models.CharField(max_length=200, verbose_name="事项标题")
+    source_type = models.CharField(max_length=20, choices=SOURCE_TYPE_CHOICES, default="manual", verbose_name="信息来源")
+    source_excerpt = models.ForeignKey(
+        ProgramExcerpt,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="companion_plans",
+        verbose_name="来源节目摘录"
+    )
+    source_topic = models.ForeignKey(
+        Topic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="companion_plans",
+        verbose_name="来源专题"
+    )
+    source_excerpt_content = models.TextField(blank=True, null=True, verbose_name="来源摘录内容")
+    handle_location = models.CharField(max_length=300, verbose_name="办理地点")
+    handle_time_start = models.DateField(null=True, blank=True, verbose_name="办理起始日期")
+    handle_time_end = models.DateField(null=True, blank=True, verbose_name="办理截止日期")
+    handle_time_note = models.CharField(max_length=200, blank=True, null=True, verbose_name="办理时间说明")
+    transportation = models.CharField(max_length=30, choices=TRANSPORTATION_CHOICES, blank=True, null=True, verbose_name="出行方式")
+    transportation_note = models.CharField(max_length=200, blank=True, null=True, verbose_name="出行方式说明")
+    companion_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="companion_assignments",
+        verbose_name="陪同家属"
+    )
+    elderly_notes = models.TextField(blank=True, null=True, verbose_name="老人注意事项")
+    elderly_concerns = models.TextField(blank=True, null=True, verbose_name="老人担心的问题")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", verbose_name="办理状态")
+    materials_confirmed = models.BooleanField(default=False, verbose_name="材料是否已全部确认")
+    time_location_known = models.BooleanField(default=False, verbose_name="是否已知晓时间地点")
+    needs_companion = models.BooleanField(default=False, verbose_name="是否需要家人陪同")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="created_companion_plans",
+        verbose_name="创建人（家属）"
+    )
+    family_group = models.ForeignKey(
+        "accounts.FamilyGroup",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="companion_plans",
+        verbose_name="所属家庭组"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "companion_plan"
+        verbose_name = "陪办计划"
+        verbose_name_plural = "陪办计划"
+        ordering = ["-handle_time_start", "-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class CompanionPlanMaterial(models.Model):
+    id = models.AutoField(primary_key=True)
+    companion_plan = models.ForeignKey(
+        CompanionPlan,
+        on_delete=models.CASCADE,
+        related_name="materials",
+        verbose_name="所属陪办计划"
+    )
+    name = models.CharField(max_length=200, verbose_name="材料名称")
+    description = models.CharField(max_length=500, blank=True, null=True, verbose_name="材料说明")
+    is_prepared = models.BooleanField(default=False, verbose_name="是否已准备")
+    prepared_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="prepared_materials",
+        verbose_name="确认人"
+    )
+    prepared_at = models.DateTimeField(null=True, blank=True, verbose_name="确认时间")
+    order_index = models.PositiveIntegerField(default=0, verbose_name="排序")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        db_table = "companion_plan_material"
+        verbose_name = "陪办计划材料"
+        verbose_name_plural = "陪办计划材料"
+        ordering = ["order_index", "id"]
+
+    def __str__(self):
+        return f"{self.companion_plan.title} - {self.name}"
+
+
 class FollowUpItem(models.Model):
     STATUS_CHOICES = (
         ("pending", "待处理"),
@@ -256,6 +381,8 @@ class FollowUpItem(models.Model):
         ("manual", "手动创建"),
         ("confirmation", "确认催办"),
         ("review_package", "资料包讲解需求"),
+        ("companion_plan", "陪办计划陪同"),
+        ("companion_material", "陪办计划材料确认"),
     )
 
     id = models.AutoField(primary_key=True)
@@ -263,7 +390,7 @@ class FollowUpItem(models.Model):
     description = models.TextField(blank=True, null=True, verbose_name="事项描述")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", verbose_name="状态")
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="medium", verbose_name="优先级")
-    source_type = models.CharField(max_length=20, choices=SOURCE_TYPE_CHOICES, default="manual", verbose_name="来源类型")
+    source_type = models.CharField(max_length=30, choices=SOURCE_TYPE_CHOICES, default="manual", verbose_name="来源类型")
     excerpt = models.ForeignKey(
         ProgramExcerpt,
         on_delete=models.CASCADE,
@@ -279,6 +406,14 @@ class FollowUpItem(models.Model):
         blank=True,
         related_name="follow_up_items",
         verbose_name="关联资料包条目"
+    )
+    companion_plan = models.ForeignKey(
+        CompanionPlan,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="follow_up_items",
+        verbose_name="关联陪办计划"
     )
     assigned_to = models.ForeignKey(
         User,

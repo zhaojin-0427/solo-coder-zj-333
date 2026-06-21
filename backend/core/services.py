@@ -4,7 +4,8 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import (
     ProgramExcerpt, Version, Topic, FollowUpItem,
-    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback
+    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback,
+    CompanionPlan, CompanionPlanMaterial
 )
 from accounts.models import User
 
@@ -130,6 +131,7 @@ class StatisticsService:
             })
 
         package_stats = ReviewPackageService.get_package_statistics(family_group_id)
+        companion_stats = CompanionPlanService.get_plan_statistics(family_group_id)
 
         return {
             "popular_programs": [
@@ -149,6 +151,7 @@ class StatisticsService:
             "pending_confirmation_count": pending_confirmation_count,
             "confirmation_trend_7d": confirmation_trend_7d,
             "review_package_stats": package_stats,
+            "companion_plan_stats": companion_stats,
         }
 
 
@@ -419,4 +422,351 @@ class ReviewPackageService:
             "feedback_distribution": feedback_distribution,
             "topic_distribution": topic_distribution,
             "needs_explanation_count": needs_explanation_count,
+        }
+
+
+class CompanionPlanService:
+    @staticmethod
+    @transaction.atomic
+    def create_plan(user, title, handle_location, source_type="manual",
+                    source_excerpt_id=None, source_topic_id=None, source_excerpt_content=None,
+                    handle_time_start=None, handle_time_end=None, handle_time_note=None,
+                    transportation=None, transportation_note=None, companion_user_id=None,
+                    elderly_notes=None, materials=None, status="pending"):
+        if not title:
+            raise ValueError("事项标题不能为空")
+        if not handle_location:
+            raise ValueError("办理地点不能为空")
+
+        family_group = user.family_group
+
+        source_excerpt = None
+        if source_excerpt_id:
+            try:
+                source_excerpt = ProgramExcerpt.objects.get(id=source_excerpt_id)
+            except ProgramExcerpt.DoesNotExist:
+                raise ValueError("指定的节目摘录不存在")
+
+        source_topic = None
+        if source_topic_id:
+            try:
+                source_topic = Topic.objects.get(id=source_topic_id)
+            except Topic.DoesNotExist:
+                raise ValueError("指定的专题不存在")
+
+        companion_user = None
+        if companion_user_id:
+            try:
+                companion_user = User.objects.get(id=companion_user_id)
+            except User.DoesNotExist:
+                raise ValueError("指定的陪同家属不存在")
+
+        plan = CompanionPlan.objects.create(
+            title=title,
+            source_type=source_type,
+            source_excerpt=source_excerpt,
+            source_topic=source_topic,
+            source_excerpt_content=source_excerpt_content,
+            handle_location=handle_location,
+            handle_time_start=handle_time_start,
+            handle_time_end=handle_time_end,
+            handle_time_note=handle_time_note,
+            transportation=transportation,
+            transportation_note=transportation_note,
+            companion_user=companion_user,
+            elderly_notes=elderly_notes,
+            status=status,
+            created_by=user,
+            family_group=family_group,
+        )
+
+        if materials:
+            for idx, mat in enumerate(materials):
+                CompanionPlanMaterial.objects.create(
+                    companion_plan=plan,
+                    name=mat.get("name", ""),
+                    description=mat.get("description"),
+                    order_index=mat.get("order_index", idx),
+                )
+
+        return plan
+
+    @staticmethod
+    @transaction.atomic
+    def update_plan(plan, user, **kwargs):
+        update_fields = [
+            "title", "source_type", "source_excerpt_content",
+            "handle_location", "handle_time_start", "handle_time_end", "handle_time_note",
+            "transportation", "transportation_note", "elderly_notes",
+            "elderly_concerns", "status", "materials_confirmed",
+            "time_location_known", "needs_companion"
+        ]
+
+        for field in update_fields:
+            if field in kwargs and kwargs[field] is not None:
+                setattr(plan, field, kwargs[field])
+
+        if "source_excerpt_id" in kwargs and kwargs["source_excerpt_id"] is not None:
+            try:
+                plan.source_excerpt = ProgramExcerpt.objects.get(id=kwargs["source_excerpt_id"])
+            except ProgramExcerpt.DoesNotExist:
+                raise ValueError("指定的节目摘录不存在")
+        elif "source_excerpt_id" in kwargs and kwargs["source_excerpt_id"] is None:
+            plan.source_excerpt = None
+
+        if "source_topic_id" in kwargs and kwargs["source_topic_id"] is not None:
+            try:
+                plan.source_topic = Topic.objects.get(id=kwargs["source_topic_id"])
+            except Topic.DoesNotExist:
+                raise ValueError("指定的专题不存在")
+        elif "source_topic_id" in kwargs and kwargs["source_topic_id"] is None:
+            plan.source_topic = None
+
+        if "companion_user_id" in kwargs and kwargs["companion_user_id"] is not None:
+            try:
+                plan.companion_user = User.objects.get(id=kwargs["companion_user_id"])
+            except User.DoesNotExist:
+                raise ValueError("指定的陪同家属不存在")
+        elif "companion_user_id" in kwargs and kwargs["companion_user_id"] is None:
+            plan.companion_user = None
+
+        if "materials" in kwargs and kwargs["materials"] is not None:
+            plan.materials.all().delete()
+            for idx, mat in enumerate(kwargs["materials"]):
+                CompanionPlanMaterial.objects.create(
+                    companion_plan=plan,
+                    name=mat.get("name", ""),
+                    description=mat.get("description"),
+                    order_index=mat.get("order_index", idx),
+                )
+
+        plan.save()
+        return plan
+
+    @staticmethod
+    @transaction.atomic
+    def elderly_checkin(plan, elderly_user, materials_confirmed=None,
+                        time_location_known=None, needs_companion=None,
+                        elderly_concerns=None, material_ids=None):
+        if elderly_user.role != "elderly":
+            raise ValueError("只有老人可以进行打卡确认")
+
+        if materials_confirmed is not None:
+            plan.materials_confirmed = materials_confirmed
+        if time_location_known is not None:
+            plan.time_location_known = time_location_known
+        if needs_companion is not None:
+            plan.needs_companion = needs_companion
+        if elderly_concerns is not None:
+            plan.elderly_concerns = elderly_concerns
+
+        if material_ids:
+            plan.materials.filter(id__in=material_ids).update(
+                is_prepared=True,
+                prepared_by=elderly_user,
+                prepared_at=timezone.now()
+            )
+
+        total_materials = plan.materials.count()
+        if total_materials > 0:
+            prepared_count = plan.materials.filter(is_prepared=True).count()
+            if prepared_count == total_materials:
+                plan.materials_confirmed = True
+            else:
+                plan.materials_confirmed = False
+
+        plan.save()
+
+        follow_up_item = None
+        if needs_companion:
+            follow_up_item = CompanionPlanService._generate_companion_followup(plan, elderly_user)
+
+        return plan, follow_up_item
+
+    @staticmethod
+    def _generate_companion_followup(plan, elderly_user):
+        family_group = plan.family_group
+        assigned_to = plan.companion_user
+
+        if not assigned_to and family_group:
+            family_members = User.objects.filter(
+                family_group=family_group,
+                role="family"
+            )
+            if family_members.exists():
+                assigned_to = family_members.first()
+
+        title = f"陪同办理：{plan.title}"
+        description_parts = [
+            f"老人「{elderly_user.first_name or elderly_user.username}」需要家人陪同办理以下事项：",
+            f"",
+            f"事项：{plan.title}",
+            f"办理地点：{plan.handle_location}",
+        ]
+        if plan.handle_time_start:
+            time_range = plan.handle_time_start.strftime("%Y-%m-%d")
+            if plan.handle_time_end:
+                time_range += f" 至 {plan.handle_time_end.strftime('%Y-%m-%d')}"
+            description_parts.append(f"办理时间：{time_range}")
+        if plan.handle_time_note:
+            description_parts.append(f"时间说明：{plan.handle_time_note}")
+        if plan.elderly_concerns:
+            description_parts.append(f"")
+            description_parts.append(f"老人担心的问题：{plan.elderly_concerns}")
+
+        description = "\n".join(description_parts)
+        due_date = plan.handle_time_start or (timezone.now() + timedelta(days=7)).date()
+
+        existing = FollowUpItem.objects.filter(
+            companion_plan=plan,
+            source_type="companion_plan",
+            status__in=["pending", "in_progress"]
+        ).first()
+        if existing:
+            return existing
+
+        return FollowUpItem.objects.create(
+            title=title,
+            description=description,
+            status="pending",
+            priority="high",
+            source_type="companion_plan",
+            companion_plan=plan,
+            excerpt=plan.source_excerpt,
+            assigned_to=assigned_to,
+            due_date=due_date,
+        )
+
+    @staticmethod
+    def update_material_status(material, user, is_prepared):
+        material.is_prepared = is_prepared
+        if is_prepared:
+            material.prepared_by = user
+            material.prepared_at = timezone.now()
+        else:
+            material.prepared_by = None
+            material.prepared_at = None
+        material.save()
+
+        plan = material.companion_plan
+        total_materials = plan.materials.count()
+        if total_materials > 0:
+            prepared_count = plan.materials.filter(is_prepared=True).count()
+            if prepared_count == total_materials:
+                plan.materials_confirmed = True
+            else:
+                plan.materials_confirmed = False
+            plan.save()
+
+        follow_up_item = None
+        if not is_prepared:
+            plan_age = timezone.now() - plan.created_at
+            if plan_age > timedelta(days=3) and not plan.materials_confirmed:
+                follow_up_item = CompanionPlanService._generate_material_followup(plan, user)
+
+        return material, follow_up_item
+
+    @staticmethod
+    def _generate_material_followup(plan, user):
+        family_group = plan.family_group
+        assigned_to = plan.created_by
+
+        if not assigned_to and family_group:
+            family_members = User.objects.filter(
+                family_group=family_group,
+                role="family"
+            )
+            if family_members.exists():
+                assigned_to = family_members.first()
+
+        title = f"材料确认提醒：{plan.title}"
+        unprepared = plan.materials.filter(is_prepared=False)
+        material_list = "\n".join([f"- {m.name}" for m in unprepared])
+
+        description = (
+            f"陪办计划「{plan.title}」创建已超过3天，仍有以下材料未确认准备：\n"
+            f"\n"
+            f"{material_list}\n"
+            f"\n"
+            f"请及时协助老人确认材料准备情况。"
+        )
+
+        existing = FollowUpItem.objects.filter(
+            companion_plan=plan,
+            source_type="companion_material",
+            status__in=["pending", "in_progress"]
+        ).first()
+        if existing:
+            return existing
+
+        return FollowUpItem.objects.create(
+            title=title,
+            description=description,
+            status="pending",
+            priority="medium",
+            source_type="companion_material",
+            companion_plan=plan,
+            excerpt=plan.source_excerpt,
+            assigned_to=assigned_to,
+            due_date=(timezone.now() + timedelta(days=3)).date(),
+        )
+
+    @staticmethod
+    def get_plan_statistics(family_group_id=None):
+        base_query = CompanionPlan.objects.all()
+        if family_group_id:
+            base_query = base_query.filter(family_group_id=family_group_id)
+
+        total_plans = base_query.count()
+        if total_plans == 0:
+            return {
+                "total_plans": 0,
+                "status_distribution": {
+                    "pending": 0,
+                    "preparing": 0,
+                    "scheduled": 0,
+                    "completed": 0,
+                    "cancelled": 0,
+                },
+                "material_prepared_rate": 0,
+                "pending_7d": 0,
+                "top_locations": [],
+            }
+
+        status_distribution = {
+            "pending": base_query.filter(status="pending").count(),
+            "preparing": base_query.filter(status="preparing").count(),
+            "scheduled": base_query.filter(status="scheduled").count(),
+            "completed": base_query.filter(status="completed").count(),
+            "cancelled": base_query.filter(status="cancelled").count(),
+        }
+
+        materials_query = CompanionPlanMaterial.objects.filter(companion_plan__in=base_query)
+        total_materials = materials_query.count()
+        prepared_materials = materials_query.filter(is_prepared=True).count()
+        material_prepared_rate = round(prepared_materials / total_materials, 2) if total_materials > 0 else 0
+
+        today = timezone.now().date()
+        seven_days_later = today + timedelta(days=7)
+        pending_7d = base_query.filter(
+            status__in=["pending", "preparing", "scheduled"],
+            handle_time_start__lte=seven_days_later
+        ).count()
+
+        location_counts = (
+            base_query.values("handle_location")
+            .annotate(count=Count("handle_location"))
+            .order_by("-count")[:5]
+        )
+        top_locations = [
+            {"location": item["handle_location"], "count": item["count"]}
+            for item in location_counts
+        ]
+
+        return {
+            "total_plans": total_plans,
+            "status_distribution": status_distribution,
+            "material_prepared_rate": material_prepared_rate,
+            "pending_7d": pending_7d,
+            "top_locations": top_locations,
         }
