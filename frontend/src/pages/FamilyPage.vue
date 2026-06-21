@@ -512,7 +512,18 @@ const companionPlanSourceTypeLabel = (sourceType: string) => {
 
 const formatCompanionPlanTime = (plan: CompanionPlan) => {
   if (plan.handleTimeStart && plan.handleTimeEnd) {
-    return `${plan.handleTimeStart.slice(0, 5)} - ${plan.handleTimeEnd.slice(0, 5)}`
+    const start = new Date(plan.handleTimeStart)
+    const end = new Date(plan.handleTimeEnd)
+    const startStr = start.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+    const endStr = end.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+    return `${startStr} - ${endStr}`
+  }
+  if (plan.handleTimeStart) {
+    return new Date(plan.handleTimeStart).toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
   }
   if (plan.handleTimeNote) {
     return plan.handleTimeNote

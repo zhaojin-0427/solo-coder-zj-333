@@ -531,14 +531,29 @@ class CompanionPlanService:
             plan.companion_user = None
 
         if "materials" in kwargs and kwargs["materials"] is not None:
-            plan.materials.all().delete()
+            existing_materials = {m.id: m for m in plan.materials.all()}
+            new_material_ids = set()
+
             for idx, mat in enumerate(kwargs["materials"]):
-                CompanionPlanMaterial.objects.create(
-                    companion_plan=plan,
-                    name=mat.get("name", ""),
-                    description=mat.get("description"),
-                    order_index=mat.get("order_index", idx),
-                )
+                mat_id = mat.get("id")
+                if mat_id and mat_id in existing_materials:
+                    m = existing_materials[mat_id]
+                    m.name = mat.get("name", m.name)
+                    m.description = mat.get("description", m.description)
+                    m.order_index = mat.get("order_index", idx)
+                    m.save()
+                    new_material_ids.add(mat_id)
+                else:
+                    CompanionPlanMaterial.objects.create(
+                        companion_plan=plan,
+                        name=mat.get("name", ""),
+                        description=mat.get("description"),
+                        order_index=mat.get("order_index", idx),
+                    )
+
+            for m_id, m in existing_materials.items():
+                if m_id not in new_material_ids:
+                    m.delete()
 
         plan.save()
         return plan

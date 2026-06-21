@@ -309,6 +309,17 @@ export const companionPlanApi = {
     return api.get(`/companion-plan-materials/${query}`)
   },
 
+  createMaterial: (planId: number, data: { name: string; description?: string | null; orderIndex?: number }): Promise<CompanionPlanMaterial> =>
+    api.post('/companion-plan-materials/', {
+      companionPlanId: planId,
+      name: data.name,
+      description: data.description,
+      orderIndex: data.orderIndex
+    }),
+
+  deleteMaterial: (materialId: number): Promise<void> =>
+    api.delete(`/companion-plan-materials/${materialId}/`),
+
   updateMaterialStatus: (materialId: number, isPrepared: boolean): Promise<CompanionPlanMaterial> =>
     api.post(`/companion-plan-materials/${materialId}/update-status/`, {
       isPrepared

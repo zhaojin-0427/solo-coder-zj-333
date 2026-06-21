@@ -250,9 +250,9 @@
             <el-form-item label="陪同家属">
               <el-select v-model="formData.companionUserId" placeholder="请选择陪同家属" style="width: 100%" clearable filterable>
                 <el-option
-                  v-for="member in familyMembers"
+                  v-for="member in companionMembers"
                   :key="member.id"
-                  :label="`${member.firstName}${member.lastName} (${member.roleDisplay})`"
+                  :label="`${member.firstName}${member.lastName} (${member.roleDisplay})"
                   :value="member.id"
                 />
               </el-select>
@@ -361,6 +361,7 @@ const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 
 interface FormMaterial {
+  id?: number
   name: string
   description: string | null
   orderIndex: number
@@ -402,6 +403,10 @@ const selectedExcerpt = computed(() => {
     return availableExcerpts.value.find(e => e.id === formData.sourceExcerptId) || null
   }
   return null
+})
+
+const companionMembers = computed(() => {
+  return familyMembers.value.filter(m => m.role !== 'elderly')
 })
 
 const getStatusType = (status: string): 'success' | 'warning' | 'info' | 'danger' | 'primary' => {
@@ -559,6 +564,7 @@ const openEditDialog = async (plan: CompanionPlan) => {
 
   if (plan.materials && plan.materials.length > 0) {
     formData.materials = plan.materials.map((m: CompanionPlanMaterial, i: number) => ({
+      id: m.id,
       name: m.name,
       description: m.description,
       orderIndex: i
@@ -579,6 +585,7 @@ const handleSubmit = async () => {
         const materials = formData.materials
           .filter(m => m.name.trim())
           .map((m, i) => ({
+            id: m.id,
             name: m.name.trim(),
             description: m.description?.trim() || null,
             orderIndex: i

@@ -469,7 +469,7 @@
             <el-form-item label="陪同家属">
               <el-select v-model="editFormData.companionUserId" placeholder="选择陪同家属" style="width: 100%" clearable>
                 <el-option
-                  v-for="member in familyMembers"
+                  v-for="member in companionMembers"
                   :key="member.id"
                   :label="member.firstName || member.username"
                   :value="member.id"
@@ -588,6 +588,10 @@ const formData = reactive({
 
 const isElderly = computed(() => userStore.user?.role === 'elderly')
 const isFamily = computed(() => userStore.user?.role === 'family' || userStore.user?.role === 'admin')
+
+const companionMembers = computed(() => {
+  return familyMembers.value.filter(m => m.role !== 'elderly')
+})
 
 const sortedMaterials = computed(() => {
   return [...allMaterials.value].sort((a, b) => a.orderIndex - b.orderIndex)
@@ -779,6 +783,7 @@ const confirmDeleteMaterial = async (material: CompanionPlanMaterial) => {
         type: 'warning'
       }
     )
+    await companionPlanApi.deleteMaterial(material.id)
     ElMessage.success('材料已删除')
     loadPlan()
   } catch {
@@ -865,12 +870,6 @@ const handleEdit = async () => {
     if (valid) {
       submittingEdit.value = true
       try {
-        const currentMaterials = allMaterials.value.map(m => ({
-          name: m.name,
-          description: m.description,
-          orderIndex: m.orderIndex
-        }))
-
         await companionPlanApi.update(planData.value.id, {
           title: editFormData.title,
           handleLocation: editFormData.handleLocation,
@@ -880,8 +879,7 @@ const handleEdit = async () => {
           transportation: (editFormData.transportation as CompanionPlan['transportation']) || null,
           transportationNote: editFormData.transportationNote || null,
           companionUserId: editFormData.companionUserId,
-          status: editFormData.status,
-          materials: currentMaterials
+          status: editFormData.status
         })
         ElMessage.success('陪办计划已更新！')
         editDialogVisible.value = false
@@ -921,19 +919,10 @@ const handleAddMaterial = async () => {
     if (valid) {
       submittingMaterial.value = true
       try {
-        const currentMaterials = allMaterials.value.map(m => ({
-          name: m.name,
-          description: m.description,
-          orderIndex: m.orderIndex
-        }))
-        currentMaterials.push({
+        await companionPlanApi.createMaterial(planData.value.id, {
           name: addMaterialFormData.name,
           description: addMaterialFormData.description || null,
           orderIndex: allMaterials.value.length
-        })
-
-        await companionPlanApi.update(planData.value.id, {
-          materials: currentMaterials
         })
         ElMessage.success('材料已添加！')
         addMaterialDialogVisible.value = false

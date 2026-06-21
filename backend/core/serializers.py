@@ -362,6 +362,7 @@ class CompanionPlanMaterialSerializer(serializers.ModelSerializer):
 
 
 class CompanionPlanMaterialCreateSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True, default=None)
     name = serializers.CharField(max_length=200)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     order_index = serializers.IntegerField(required=False, default=0)
@@ -536,8 +537,8 @@ class CompanionPlanCreateSerializer(serializers.Serializer):
     source_topic_id = serializers.IntegerField(required=False, allow_null=True, default=None)
     source_excerpt_content = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     handle_location = serializers.CharField(max_length=300)
-    handle_time_start = serializers.DateField(required=False, allow_null=True)
-    handle_time_end = serializers.DateField(required=False, allow_null=True)
+    handle_time_start = serializers.DateTimeField(required=False, allow_null=True)
+    handle_time_end = serializers.DateTimeField(required=False, allow_null=True)
     handle_time_note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     transportation = serializers.ChoiceField(
         choices=["walk", "bus", "subway", "taxi", "private_car", "community_shuttle", "other"],
@@ -564,8 +565,8 @@ class CompanionPlanUpdateSerializer(serializers.Serializer):
     source_topic_id = serializers.IntegerField(required=False, allow_null=True)
     source_excerpt_content = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     handle_location = serializers.CharField(max_length=300, required=False)
-    handle_time_start = serializers.DateField(required=False, allow_null=True)
-    handle_time_end = serializers.DateField(required=False, allow_null=True)
+    handle_time_start = serializers.DateTimeField(required=False, allow_null=True)
+    handle_time_end = serializers.DateTimeField(required=False, allow_null=True)
     handle_time_note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     transportation = serializers.ChoiceField(
         choices=["walk", "bus", "subway", "taxi", "private_car", "community_shuttle", "other"],
