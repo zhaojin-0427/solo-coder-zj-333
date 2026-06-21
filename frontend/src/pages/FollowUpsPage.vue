@@ -78,7 +78,7 @@
                 📅 截止日期：{{ item.dueDate }}
               </span>
               <span>
-                👤 负责人：{{ getUserAvatar(item.assignedTo) }} {{ getUserName(item.assignedTo) }}
+                👤 负责人：{{ item.assignedTo?.avatar || '👤' }} {{ getUserName(item.assignedTo) }}
               </span>
               <span>
                 📝 创建于：{{ formatTime(item.createdAt) }}
@@ -162,7 +162,7 @@
                 <el-option
                   v-for="member in members"
                   :key="member.id"
-                  :label="`${member.avatar} ${member.name}`"
+                  :label="`${member.avatar} ${member.firstName || member.username}`"
                   :value="member.id"
                 />
               </el-select>
@@ -233,7 +233,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
-import type { FollowUpItem, FamilyMember, ProgramExcerpt } from '@/types'
+import type { FollowUpItem, FamilyMember, ProgramExcerpt, UserInfo } from '@/types'
 import { followUpApi, familyApi, excerptApi } from '@/api'
 
 const loading = ref(false)
@@ -318,12 +318,9 @@ const formatTime = (timeStr: string) => {
   })
 }
 
-const getUserAvatar = (userId: number) => {
-  return userMap[userId]?.avatar || '👤'
-}
-
-const getUserName = (userId: number) => {
-  return userMap[userId]?.name || '未知用户'
+const getUserName = (assignedTo: UserInfo | null) => {
+  if (!assignedTo) return '未分配'
+  return assignedTo.firstName || assignedTo.username || '未知用户'
 }
 
 const loadFollowUps = async () => {
@@ -379,9 +376,9 @@ const handleSubmit = async () => {
           description: formData.description,
           priority: formData.priority,
           status: formData.status,
-          assignedTo: formData.assignedTo || undefined,
+          assignedToId: formData.assignedTo,
           dueDate: formData.dueDate,
-          excerptId: formData.excerptId || undefined
+          excerptId: formData.excerptId
         })
         ElMessage.success('创建成功！')
         addDialogVisible.value = false

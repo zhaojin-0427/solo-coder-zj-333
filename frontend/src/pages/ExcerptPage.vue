@@ -357,8 +357,8 @@ const handleEdit = (excerpt: ProgramExcerpt) => {
   formData.programName = excerpt.programName
   formData.timeSlot = excerpt.timeSlot
   formData.contentSummary = excerpt.contentSummary
-  formData.elderlyNotes = excerpt.elderlyNotes
-  formData.topicId = excerpt.topicId
+  formData.elderlyNotes = excerpt.elderlyNotes || ''
+  formData.topicId = excerpt.topic ? excerpt.topic.id : null
 
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }

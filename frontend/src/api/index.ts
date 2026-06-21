@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
+import { convertKeysSnakeToCamel, convertKeysCamelToSnake } from '@/utils/convert'
 import type {
   ProgramExcerpt,
   Topic,
@@ -29,6 +30,9 @@ axiosInstance.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    if (config.data && typeof config.data === 'object' && !(config.data instanceof FormData)) {
+      config.data = convertKeysCamelToSnake(config.data)
+    }
     return config
   },
   (error) => {
@@ -38,6 +42,7 @@ axiosInstance.interceptors.request.use(
 
 axiosInstance.interceptors.response.use(
   (response: AxiosResponse) => {
+    response.data = convertKeysSnakeToCamel(response.data)
     return response
   },
   (error) => {
@@ -102,21 +107,21 @@ export const excerptApi = {
   create: (data: Partial<ProgramExcerpt>): Promise<ProgramExcerpt> =>
     api.post('/excerpts/', {
       date: data.date,
-      program_name: data.programName,
-      time_slot: data.timeSlot,
-      content_summary: data.contentSummary,
-      elderly_notes: data.elderlyNotes,
-      topic_id: data.topicId
+      programName: data.programName,
+      timeSlot: data.timeSlot,
+      contentSummary: data.contentSummary,
+      elderlyNotes: data.elderlyNotes,
+      topicId: data.topicId
     }),
 
   update: (id: number, data: Partial<ProgramExcerpt>): Promise<ProgramExcerpt> =>
     api.put(`/excerpts/${id}/`, {
       date: data.date,
-      program_name: data.programName,
-      time_slot: data.timeSlot,
-      content_summary: data.contentSummary,
-      elderly_notes: data.elderlyNotes,
-      topic_id: data.topicId
+      programName: data.programName,
+      timeSlot: data.timeSlot,
+      contentSummary: data.contentSummary,
+      elderlyNotes: data.elderlyNotes,
+      topicId: data.topicId
     }),
 
   delete: (id: number): Promise<void> =>
@@ -127,8 +132,8 @@ export const excerptApi = {
 
   mergeDuplicate: (id: number, duplicateId: number, mergeNote?: string): Promise<ProgramExcerpt> =>
     api.post(`/excerpts/${id}/merge/`, {
-      duplicate_id: duplicateId,
-      merge_note: mergeNote
+      duplicateId: duplicateId,
+      mergeNote: mergeNote
     }),
 
   getComments: (id: number): Promise<Comment[]> =>
@@ -173,26 +178,26 @@ export const followUpApi = {
     return api.get(`/followups/${query}`)
   },
 
-  create: (data: Partial<FollowUpItem>): Promise<FollowUpItem> =>
+  create: (data: Partial<FollowUpItem> & { assignedToId?: number | null }): Promise<FollowUpItem> =>
     api.post('/followups/', {
       title: data.title,
       description: data.description,
       status: data.status,
       priority: data.priority,
-      excerpt_id: data.excerptId,
-      assigned_to_id: data.assignedTo,
-      due_date: data.dueDate
+      excerptId: data.excerptId,
+      assignedToId: data.assignedToId ?? (typeof data.assignedTo === 'object' ? data.assignedTo?.id : data.assignedTo),
+      dueDate: data.dueDate
     }),
 
-  update: (id: number, data: Partial<FollowUpItem>): Promise<FollowUpItem> =>
+  update: (id: number, data: Partial<FollowUpItem> & { assignedToId?: number | null }): Promise<FollowUpItem> =>
     api.put(`/followups/${id}/`, {
       title: data.title,
       description: data.description,
       status: data.status,
       priority: data.priority,
-      excerpt_id: data.excerptId,
-      assigned_to_id: data.assignedTo,
-      due_date: data.dueDate
+      excerptId: data.excerptId,
+      assignedToId: data.assignedToId ?? (typeof data.assignedTo === 'object' ? data.assignedTo?.id : data.assignedTo),
+      dueDate: data.dueDate
     }),
 
   updateStatus: (id: number, status: string): Promise<FollowUpItem> =>

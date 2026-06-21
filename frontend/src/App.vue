@@ -26,7 +26,7 @@
               <el-dropdown trigger="click" @command="handleUserCommand">
                 <div class="flex items-center gap-3 cursor-pointer hover:bg-orange-50 px-3 py-2 rounded-lg transition-colors">
                   <span class="text-2xl">{{ userStore.user?.avatar || '👤' }}</span>
-                  <span class="text-lg font-medium hidden sm:inline">{{ userStore.user?.name || '用户' }}</span>
+                  <span class="text-lg font-medium hidden sm:inline">{{ userStore.user?.firstName || userStore.user?.username || '用户' }}</span>
                   <el-icon class="text-gray-400"><ArrowDown /></el-icon>
                 </div>
                 <template #dropdown>
@@ -34,7 +34,7 @@
                     <el-dropdown-item disabled>
                       <span class="flex items-center gap-2">
                         <span>{{ userStore.user?.avatar }}</span>
-                        <span>{{ userStore.user?.name }}</span>
+                        <span>{{ userStore.user?.firstName || userStore.user?.username }}</span>
                       </span>
                     </el-dropdown-item>
                     <el-dropdown-item disabled class="text-sm text-gray-500">

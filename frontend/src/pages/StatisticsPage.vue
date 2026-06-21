@@ -22,13 +22,13 @@
       <el-row :gutter="24" class="mb-6">
         <el-col :xs="24" :sm="12" :md="6">
           <div class="stat-card">
-            <div class="stat-number">{{ statistics?.duplicateRate?.total || 0 }}</div>
+            <div class="stat-number">{{ statistics?.totalExcerpts || 0 }}</div>
             <div class="stat-label">📋 总摘录数</div>
           </div>
         </el-col>
         <el-col :xs="24" :sm="12" :md="6">
           <div class="stat-card">
-            <div class="stat-number text-blue">{{ statistics?.duplicateRate?.duplicates || 0 }}</div>
+            <div class="stat-number text-blue">{{ statistics?.duplicateRatio?.duplicates || 0 }}</div>
             <div class="stat-label">⚠️ 重复记录</div>
           </div>
         </el-col>
@@ -193,7 +193,7 @@ const initBarChart = () => {
 
   barChart = echarts.init(barChartRef.value)
 
-  const data = statistics.value.topPrograms || []
+  const data = statistics.value.popularPrograms || []
   const names = data.map(item => item.name)
   const counts = data.map(item => item.count)
 
@@ -326,7 +326,7 @@ const initDonutChart = () => {
 
   donutChart = echarts.init(donutChartRef.value)
 
-  const { total, duplicates, rate } = statistics.value.duplicateRate || { total: 0, duplicates: 0, rate: 0 }
+  const { total, duplicates, rate } = statistics.value.duplicateRatio || { total: 0, duplicates: 0, rate: 0 }
   const unique = total - duplicates
 
   const option: echarts.EChartsOption = {

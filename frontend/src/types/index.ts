@@ -1,3 +1,24 @@
+export interface FamilyGroup {
+  id: number
+  name: string
+  createdAt: string
+}
+
+export interface UserInfo {
+  id: number
+  username: string
+  firstName: string
+  lastName: string
+  email: string
+  role: 'elderly' | 'family' | 'admin'
+  roleDisplay: string
+  avatar: string
+  familyGroup: FamilyGroup | null
+  isActive: boolean
+  isStaff: boolean
+  dateJoined: string
+}
+
 export interface ProgramExcerpt {
   id: number
   date: string
@@ -5,14 +26,18 @@ export interface ProgramExcerpt {
   timeSlot: string
   contentSummary: string
   elderlyNotes: string
-  topicId: number | null
+  topic: Topic | null
+  topicId?: number | null
+  topicName: string | null
   isDuplicate: boolean
   duplicateOf: number | null
-  createdBy: number
+  createdBy: UserInfo
+  createdByName: string
+  commentCount: number
+  versions?: Version[]
+  comments?: Comment[]
   createdAt: string
   updatedAt: string
-  versions?: Version[]
-  topic?: Topic
 }
 
 export interface Topic {
@@ -21,25 +46,32 @@ export interface Topic {
   color: string
   icon: string
   description: string
-  count?: number
+  excerptCount: number
+  createdAt: string
 }
 
 export interface Version {
   id: number
-  excerptId: number
   content: string
-  createdBy: number
+  createdBy: UserInfo
   createdAt: string
   mergeNote: string
 }
 
 export interface FamilyMember {
   id: number
-  name: string
+  username: string
+  firstName: string
+  lastName: string
+  email: string
   role: 'elderly' | 'family' | 'admin'
+  roleDisplay: string
   avatar: string
-  contributionCount: number
-  username?: string
+  familyGroup: FamilyGroup | null
+  isActive: boolean
+  isStaff: boolean
+  dateJoined: string
+  contributionCount?: number
 }
 
 export interface FollowUpItem {
@@ -47,37 +79,45 @@ export interface FollowUpItem {
   title: string
   description: string
   status: 'pending' | 'in_progress' | 'completed'
+  statusDisplay: string
   priority: 'high' | 'medium' | 'low'
-  excerptId: number
-  assignedTo: number
+  priorityDisplay: string
+  excerpt: ProgramExcerpt | null
+  excerptId?: number | null
+  assignedTo: UserInfo | null
+  assignedToId?: number | null
+  assignedToName: string | null
   dueDate: string
   createdAt: string
-  excerpt?: ProgramExcerpt
 }
 
 export interface Comment {
   id: number
-  excerptId: number
-  userId: number
+  user: UserInfo
   content: string
   createdAt: string
-  user?: FamilyMember
 }
 
 export interface Statistics {
-  topPrograms: { name: string; count: number }[]
+  popularPrograms: { name: string; count: number }[]
   topicDistribution: { name: string; count: number; color: string }[]
-  duplicateRate: { total: number; duplicates: number; rate: number }
-  confirmationStatus: { pending: number; confirmed: number; rejected: number }
+  duplicateRatio: { total: number; duplicates: number; rate: number }
+  unconfirmedExcerpts: number
+  pendingFollowups: number
+  totalExcerpts: number
+  confirmationStatus?: { pending: number; confirmed: number; rejected: number }
 }
 
 export interface User {
   id: number
   username: string
-  name: string
+  firstName: string
+  lastName: string
+  email: string
   role: string
+  roleDisplay: string
   avatar: string
-  familyGroupId?: number
+  familyGroup: FamilyGroup | null
   token?: string
 }
 

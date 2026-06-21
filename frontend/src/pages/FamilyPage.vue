@@ -17,7 +17,7 @@
           </div>
           <div v-else class="space-y-4">
             <div
-              v-for="member in members"
+              v-for="member in membersWithCount"
               :key="member.id"
               class="flex items-center gap-4 p-4 bg-orange-50 rounded-xl"
             >
@@ -25,9 +25,11 @@
                 {{ member.avatar }}
               </div>
               <div class="flex-1">
-                <p class="text-lg font-semibold">{{ member.name }}</p>
+                <p class="text-lg font-semibold">{{ member.firstName || member.username }}</p>
                 <p class="text-sm text-gray-500">
                   {{ member.role === 'elderly' ? '长辈' : member.role === 'admin' ? '管理员' : '家人' }}
+                  <span class="ml-2">·</span>
+                  <span class="ml-2">{{ member.roleDisplay }}</span>
                 </p>
               </div>
               <el-tag type="primary" size="large">
@@ -60,25 +62,36 @@
                 <div class="space-y-4">
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                      <span class="text-3xl">📻</span>
+                      <span class="text-3xl">{{ getMemberAvatar(item.data.createdBy?.id) }}</span>
                       <div>
                         <h3 class="text-xl font-semibold">{{ item.data.programName }}</h3>
                         <p class="text-sm text-gray-500">
+                          <span class="font-medium">{{ getMemberName(item.data.createdBy?.id) }}</span>
+                          <span class="mx-2">·</span>
                           📅 {{ item.data.date }} · ⏰ {{ item.data.timeSlot }}
                         </p>
                       </div>
                     </div>
-                    <el-tag
-                      v-if="item.data.topic"
-                      :style="{ backgroundColor: item.data.topic.color + '20', color: item.data.topic.color }"
-                      size="large"
-                    >
-                      {{ item.data.topic.icon }} {{ item.data.topic.name }}
-                    </el-tag>
+                    <div class="flex items-center gap-2">
+                      <el-tag
+                        v-if="item.data.topic"
+                        :style="{ backgroundColor: item.data.topic.color + '20', color: item.data.topic.color }"
+                        size="large"
+                      >
+                        {{ item.data.topic.icon }} {{ item.data.topic.name }}
+                      </el-tag>
+                      <el-tag
+                        v-if="item.data.isDuplicate"
+                        type="warning"
+                        size="large"
+                      >
+                        ⚠️ 重复
+                      </el-tag>
+                    </div>
                   </div>
 
                   <div class="text-base text-gray-700">
-                    <span class="font-medium">内容摘要：</span>
+                    <span class="font-medium">📝 内容摘要：</span>
                     {{ item.data.contentSummary }}
                   </div>
 
@@ -118,11 +131,11 @@
                         class="flex gap-3 p-3 bg-gray-50 rounded-lg"
                       >
                         <div class="text-2xl">
-                          {{ getUserAvatar(comment.userId) }}
+                          {{ comment.user?.avatar || '👤' }}
                         </div>
                         <div class="flex-1">
                           <div class="flex items-center gap-2 mb-1">
-                            <span class="font-medium">{{ getUserName(comment.userId) }}</span>
+                            <span class="font-medium">{{ comment.user?.firstName || comment.user?.username || '未知用户' }}</span>
                             <span class="text-xs text-gray-400">{{ formatTime(comment.createdAt) }}</span>
                           </div>
                           <p class="text-base text-gray-700">{{ comment.content }}</p>
@@ -150,7 +163,10 @@
     >
       <div class="space-y-4">
         <div v-if="currentExcerpt" class="p-4 bg-orange-50 rounded-xl">
-          <p class="font-semibold text-lg">{{ currentExcerpt.programName }}</p>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-2xl">{{ getMemberAvatar(currentExcerpt.createdBy?.id) }}</span>
+            <p class="font-semibold text-lg">{{ currentExcerpt.programName }}</p>
+          </div>
           <p class="text-sm text-gray-500 mt-1 line-clamp-2">{{ currentExcerpt.contentSummary }}</p>
         </div>
 
@@ -187,7 +203,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FamilyMember, ProgramExcerpt, Comment } from '@/types'
 import { familyApi, excerptApi } from '@/api'
@@ -208,6 +224,18 @@ const commentContent = ref('')
 
 const userMap = reactive<Record<number, FamilyMember>>({})
 
+const membersWithCount = computed(() => {
+  return members.value.map(member => {
+    const count = feedItems.value.filter(
+      item => item.data.createdBy?.id === member.id
+    ).length
+    return {
+      ...member,
+      contributionCount: count
+    }
+  })
+})
+
 const formatTime = (timeStr: string) => {
   if (!timeStr) return ''
   const date = new Date(timeStr)
@@ -220,12 +248,15 @@ const formatTime = (timeStr: string) => {
   })
 }
 
-const getUserAvatar = (userId: number) => {
+const getMemberAvatar = (userId?: number) => {
+  if (!userId) return '👤'
   return userMap[userId]?.avatar || '👤'
 }
 
-const getUserName = (userId: number) => {
-  return userMap[userId]?.name || '未知用户'
+const getMemberName = (userId?: number) => {
+  if (!userId) return '未知用户'
+  const user = userMap[userId]
+  return user?.firstName || user?.username || '未知用户'
 }
 
 const loadMembers = async () => {
@@ -288,8 +319,8 @@ const handleSubmitComment = async () => {
   }
 }
 
-onMounted(() => {
-  loadMembers()
-  loadFeed()
+onMounted(async () => {
+  await loadMembers()
+  await loadFeed()
 })
 </script>
