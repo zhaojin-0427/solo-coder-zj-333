@@ -11,7 +11,8 @@ from accounts.models import User
 from .models import (
     Topic, ProgramExcerpt, Comment, FollowUpItem,
     ReviewPackage, ReviewPackageItem, ReviewPackageFeedback,
-    CompanionPlan, CompanionPlanMaterial
+    CompanionPlan, CompanionPlanMaterial,
+    ListeningSchedule, ListeningRecord, ListeningExcerptDraft
 )
 from .serializers import (
     TopicSerializer,
@@ -38,10 +39,19 @@ from .serializers import (
     CompanionPlanMaterialSerializer,
     ElderlyCheckInSerializer,
     UpdateMaterialStatusSerializer,
+    ListeningScheduleListSerializer,
+    ListeningScheduleDetailSerializer,
+    ListeningScheduleCreateSerializer,
+    ListeningScheduleUpdateSerializer,
+    ListeningRecordSerializer,
+    UpdateListeningRecordStatusSerializer,
+    ListeningExcerptDraftSerializer,
+    UpdateDraftSerializer,
+    ConsecutiveMissedItemSerializer,
 )
 from .services import (
     StatisticsService, ProgramExcerptService, ConfirmationService,
-    ReviewPackageService, CompanionPlanService
+    ReviewPackageService, CompanionPlanService, ListeningScheduleService
 )
 
 
@@ -213,7 +223,9 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
                 Q(assigned_to__family_group_id=family_group_id) |
                 Q(excerpt__created_by__family_group_id=family_group_id) |
                 Q(review_package_item__review_package__family_group_id=family_group_id) |
-                Q(companion_plan__family_group_id=family_group_id)
+                Q(companion_plan__family_group_id=family_group_id) |
+                Q(listening_schedule__family_group_id=family_group_id) |
+                Q(listening_record__schedule__family_group_id=family_group_id)
             )
 
         status_filter = self.request.query_params.get("status")
@@ -227,6 +239,8 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
         assigned_to_id = serializer.validated_data.get("assigned_to_id")
         review_package_item_id = serializer.validated_data.get("review_package_item_id")
         companion_plan_id = serializer.validated_data.get("companion_plan_id")
+        listening_schedule_id = serializer.validated_data.get("listening_schedule_id")
+        listening_record_id = serializer.validated_data.get("listening_record_id")
 
         kwargs = {}
         if excerpt_id:
@@ -237,6 +251,10 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
             kwargs["review_package_item"] = get_object_or_404(ReviewPackageItem, id=review_package_item_id)
         if companion_plan_id:
             kwargs["companion_plan"] = get_object_or_404(CompanionPlan, id=companion_plan_id)
+        if listening_schedule_id:
+            kwargs["listening_schedule"] = get_object_or_404(ListeningSchedule, id=listening_schedule_id)
+        if listening_record_id:
+            kwargs["listening_record"] = get_object_or_404(ListeningRecord, id=listening_record_id)
 
         serializer.save(**kwargs)
 
@@ -245,6 +263,8 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
         assigned_to_id = serializer.validated_data.get("assigned_to_id")
         review_package_item_id = serializer.validated_data.get("review_package_item_id")
         companion_plan_id = serializer.validated_data.get("companion_plan_id")
+        listening_schedule_id = serializer.validated_data.get("listening_schedule_id")
+        listening_record_id = serializer.validated_data.get("listening_record_id")
 
         kwargs = {}
         if excerpt_id:
@@ -255,6 +275,10 @@ class FollowUpItemViewSet(viewsets.ModelViewSet):
             kwargs["review_package_item"] = get_object_or_404(ReviewPackageItem, id=review_package_item_id)
         if companion_plan_id:
             kwargs["companion_plan"] = get_object_or_404(CompanionPlan, id=companion_plan_id)
+        if listening_schedule_id:
+            kwargs["listening_schedule"] = get_object_or_404(ListeningSchedule, id=listening_schedule_id)
+        if listening_record_id:
+            kwargs["listening_record"] = get_object_or_404(ListeningRecord, id=listening_record_id)
 
         serializer.save(**kwargs)
 
@@ -677,9 +701,43 @@ class FamilyFeedView(views.APIView):
                 }
             result.append(item)
 
+        listening_schedules = ListeningSchedule.objects.filter(
+            family_group_id=family_group_id
+        ).order_by("-created_at")[:20]
+
+        for schedule in listening_schedules:
+            result.append({
+                "type": "listening_schedule",
+                "data": ListeningScheduleListSerializer(schedule).data,
+                "created_at": schedule.created_at,
+            })
+
+        listening_records = ListeningRecord.objects.filter(
+            schedule__family_group_id=family_group_id
+        ).exclude(status="pending").order_by("-status_updated_at", "-created_at")[:30]
+
+        for record in listening_records:
+            sort_time = record.status_updated_at or record.created_at
+            result.append({
+                "type": "listening_record",
+                "data": ListeningRecordSerializer(record).data,
+                "created_at": sort_time,
+            })
+
+        excerpt_drafts = ListeningExcerptDraft.objects.filter(
+            schedule__family_group_id=family_group_id
+        ).order_by("-created_at")[:20]
+
+        for draft in excerpt_drafts:
+            result.append({
+                "type": "listening_draft",
+                "data": ListeningExcerptDraftSerializer(draft).data,
+                "created_at": draft.created_at,
+            })
+
         result.sort(key=lambda x: x["created_at"], reverse=True)
 
-        return Response(result[:60])
+        return Response(result[:80])
 
 
 class StatisticsView(views.APIView):
@@ -689,3 +747,220 @@ class StatisticsView(views.APIView):
         family_group_id = request.user.family_group_id
         stats = StatisticsService.get_statistics(family_group_id=family_group_id)
         return Response(stats)
+
+
+class ListeningScheduleViewSet(viewsets.ModelViewSet):
+    queryset = ListeningSchedule.objects.all()
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "put", "delete"]
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return ListeningScheduleListSerializer
+        return ListeningScheduleDetailSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        family_group_id = self.request.user.family_group_id
+        if family_group_id:
+            queryset = queryset.filter(family_group_id=family_group_id)
+
+        is_active = self.request.query_params.get("is_active")
+        if is_active is not None:
+            queryset = queryset.filter(is_active=(is_active.lower() == "true"))
+
+        return queryset.order_by("-created_at")
+
+    def create(self, request, *args, **kwargs):
+        serializer = ListeningScheduleCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            schedule = ListeningScheduleService.create_schedule(
+                user=request.user,
+                program_name=serializer.validated_data["program_name"],
+                start_date=serializer.validated_data["start_date"],
+                broadcast_time=serializer.validated_data["broadcast_time"],
+                channel_source=serializer.validated_data["channel_source"],
+                end_date=serializer.validated_data.get("end_date"),
+                repeat_cycle=serializer.validated_data.get("repeat_cycle", "once"),
+                repeat_weekdays=serializer.validated_data.get("repeat_weekdays"),
+                reminder_advance_minutes=serializer.validated_data.get("reminder_advance_minutes", 0),
+                suitable_listener_ids=serializer.validated_data.get("suitable_listener_ids", []),
+                remark=serializer.validated_data.get("remark"),
+                is_active=serializer.validated_data.get("is_active", True),
+            )
+            detail_serializer = ListeningScheduleDetailSerializer(schedule)
+            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        schedule = self.get_object()
+        serializer = ListeningScheduleUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            schedule = ListeningScheduleService.update_schedule(
+                schedule=schedule,
+                user=request.user,
+                **serializer.validated_data
+            )
+            detail_serializer = ListeningScheduleDetailSerializer(schedule)
+            return Response(detail_serializer.data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ListeningRecordViewSet(viewsets.ModelViewSet):
+    queryset = ListeningRecord.objects.all()
+    serializer_class = ListeningRecordSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "put"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        family_group_id = self.request.user.family_group_id
+        if family_group_id:
+            queryset = queryset.filter(schedule__family_group_id=family_group_id)
+
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        listener_id = self.request.query_params.get("listener_id")
+        if listener_id:
+            queryset = queryset.filter(listener_id=listener_id)
+
+        return queryset.order_by("-listen_date", "-created_at")
+
+    @action(detail=False, methods=["get"], url_path="range")
+    def get_range(self, request):
+        from django.utils import timezone
+        family_group_id = request.user.family_group_id
+        if not family_group_id:
+            return Response([])
+
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        listener_id = request.query_params.get("listener_id")
+
+        today = timezone.now().date()
+        if not start_date:
+            start_date = (today - timezone.timedelta(days=today.weekday())).isoformat()
+        if not end_date:
+            end_date = (today + timezone.timedelta(days=6 - today.weekday())).isoformat()
+
+        from datetime import date
+        s = date.fromisoformat(start_date)
+        e = date.fromisoformat(end_date)
+        lid = int(listener_id) if listener_id else None
+
+        records = ListeningScheduleService.get_records_for_range(
+            family_group_id, s, e, lid
+        )
+        serializer = ListeningRecordSerializer(records, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="today")
+    def get_today(self, request):
+        from django.utils import timezone
+        family_group_id = request.user.family_group_id
+        if not family_group_id:
+            return Response([])
+
+        today = timezone.now().date()
+        listener_id = request.query_params.get("listener_id")
+        lid = int(listener_id) if listener_id else None
+
+        records = ListeningScheduleService.get_records_for_range(
+            family_group_id, today, today, lid
+        )
+        serializer = ListeningRecordSerializer(records, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="update-status")
+    def update_status(self, request, pk=None):
+        record = self.get_object()
+        serializer = UpdateListeningRecordStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            record, excerpt_draft, follow_up_item = ListeningScheduleService.update_record_status(
+                record=record,
+                elderly_user=request.user,
+                new_status=serializer.validated_data["status"],
+                note=serializer.validated_data.get("note"),
+                generate_excerpt=serializer.validated_data.get("generate_excerpt", True),
+            )
+            result = ListeningRecordSerializer(record).data
+            if excerpt_draft:
+                result["generated_excerpt_draft"] = ListeningExcerptDraftSerializer(excerpt_draft).data
+            if follow_up_item:
+                result["generated_followup"] = FollowUpItemSerializer(follow_up_item).data
+            return Response(result)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ListeningExcerptDraftViewSet(viewsets.ModelViewSet):
+    queryset = ListeningExcerptDraft.objects.all()
+    serializer_class = ListeningExcerptDraftSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "put"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        family_group_id = self.request.user.family_group_id
+        if family_group_id:
+            queryset = queryset.filter(schedule__family_group_id=family_group_id)
+
+        is_completed = self.request.query_params.get("is_completed")
+        if is_completed is not None:
+            queryset = queryset.filter(is_completed=(is_completed.lower() == "true"))
+
+        return queryset.order_by("-created_at")
+
+    def update(self, request, *args, **kwargs):
+        draft = self.get_object()
+        serializer = UpdateDraftSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            draft = ListeningScheduleService.update_draft(
+                draft=draft,
+                user=request.user,
+                content_summary=serializer.validated_data.get("content_summary"),
+                elderly_notes=serializer.validated_data.get("elderly_notes"),
+                topic_id=serializer.validated_data.get("topic_id"),
+            )
+            return Response(ListeningExcerptDraftSerializer(draft).data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"], url_path="convert")
+    def convert_to_excerpt(self, request, pk=None):
+        draft = self.get_object()
+        try:
+            excerpt = ListeningScheduleService.convert_draft_to_excerpt(draft, request.user)
+            result = ListeningExcerptDraftSerializer(draft).data
+            result["converted_excerpt"] = ProgramExcerptDetailSerializer(excerpt).data
+            return Response(result)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ConsecutiveMissedView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        family_group_id = request.user.family_group_id
+        if not family_group_id:
+            return Response([])
+
+        min_streak = int(request.query_params.get("min_streak", 3))
+        items = ListeningScheduleService.get_consecutive_missed_list(
+            family_group_id, min_streak=min_streak
+        )
+        serializer = ConsecutiveMissedItemSerializer(items, many=True)
+        return Response(serializer.data)

@@ -5,7 +5,8 @@ from datetime import timedelta
 from .models import (
     ProgramExcerpt, Version, Topic, FollowUpItem,
     ReviewPackage, ReviewPackageItem, ReviewPackageFeedback,
-    CompanionPlan, CompanionPlanMaterial
+    CompanionPlan, CompanionPlanMaterial,
+    ListeningSchedule, ListeningRecord, ListeningExcerptDraft
 )
 from accounts.models import User
 
@@ -132,6 +133,7 @@ class StatisticsService:
 
         package_stats = ReviewPackageService.get_package_statistics(family_group_id)
         companion_stats = CompanionPlanService.get_plan_statistics(family_group_id)
+        schedule_stats = ListeningScheduleService.get_schedule_statistics(family_group_id)
 
         return {
             "popular_programs": [
@@ -152,6 +154,7 @@ class StatisticsService:
             "confirmation_trend_7d": confirmation_trend_7d,
             "review_package_stats": package_stats,
             "companion_plan_stats": companion_stats,
+            "listening_schedule_stats": schedule_stats,
         }
 
 
@@ -784,4 +787,407 @@ class CompanionPlanService:
             "material_prepared_rate": material_prepared_rate,
             "pending_7d": pending_7d,
             "top_locations": top_locations,
+        }
+
+
+class ListeningScheduleService:
+
+    @staticmethod
+    def _expand_weekday_set(schedule):
+        cycle = schedule.repeat_cycle
+        if cycle == "daily" or cycle == "weekdays" or cycle == "weekends":
+            if cycle == "daily":
+                return set(range(7))
+            elif cycle == "weekdays":
+                return {0, 1, 2, 3, 4}
+            else:
+                return {5, 6}
+        if schedule.repeat_weekdays:
+            try:
+                return {int(x) for x in schedule.repeat_weekdays.split(",") if x.strip()}
+            except (ValueError, TypeError):
+                return set(range(7))
+        return set(range(7))
+
+    @staticmethod
+    def expand_schedule_dates(schedule, start_date, end_date):
+        if not schedule.is_active:
+            return []
+
+        eff_start = max(schedule.start_date, start_date)
+        eff_end = end_date
+        if schedule.end_date:
+            eff_end = min(eff_end, schedule.end_date)
+        if eff_start > eff_end:
+            return []
+
+        result = []
+        cycle = schedule.repeat_cycle
+
+        if cycle == "once":
+            if schedule.start_date >= eff_start and schedule.start_date <= eff_end:
+                result.append(schedule.start_date)
+            return result
+
+        weekday_set = ListeningScheduleService._expand_weekday_set(schedule)
+        current = eff_start
+
+        if cycle == "monthly":
+            while current <= eff_end:
+                if current.day == schedule.start_date.day:
+                    result.append(current)
+                current += timedelta(days=1)
+            return result
+
+        if cycle == "biweekly":
+            anchor = schedule.start_date
+            while current <= eff_end:
+                days_diff = (current - anchor).days
+                if days_diff >= 0 and days_diff % 14 == 0 and current.weekday() in weekday_set:
+                    result.append(current)
+                elif current.weekday() in weekday_set:
+                    week_diff = (current - anchor).days // 7
+                    if week_diff >= 0 and week_diff % 2 == 0:
+                        result.append(current)
+                current += timedelta(days=1)
+            return result
+
+        while current <= eff_end:
+            if current.weekday() in weekday_set:
+                result.append(current)
+            current += timedelta(days=1)
+        return result
+
+    @staticmethod
+    @transaction.atomic
+    def create_schedule(user, program_name, start_date, broadcast_time, channel_source,
+                        end_date=None, repeat_cycle="once", repeat_weekdays=None,
+                        reminder_advance_minutes=0, suitable_listener_ids=None,
+                        remark=None, is_active=True):
+        if not program_name:
+            raise ValueError("栏目名称不能为空")
+        if not start_date:
+            raise ValueError("播出起始日期不能为空")
+        if not broadcast_time:
+            raise ValueError("播出时段不能为空")
+        if not channel_source:
+            raise ValueError("频道来源不能为空")
+
+        family_group = user.family_group
+
+        schedule = ListeningSchedule.objects.create(
+            program_name=program_name,
+            start_date=start_date,
+            end_date=end_date,
+            repeat_cycle=repeat_cycle,
+            repeat_weekdays=repeat_weekdays,
+            broadcast_time=broadcast_time,
+            channel_source=channel_source,
+            reminder_advance_minutes=reminder_advance_minutes,
+            remark=remark,
+            is_active=is_active,
+            created_by=user,
+            family_group=family_group,
+        )
+
+        if suitable_listener_ids:
+            listeners = User.objects.filter(
+                id__in=suitable_listener_ids,
+                family_group=family_group,
+                role="elderly"
+            )
+            schedule.suitable_listeners.set(listeners)
+
+        return schedule
+
+    @staticmethod
+    @transaction.atomic
+    def update_schedule(schedule, user, **kwargs):
+        updatable_fields = [
+            "program_name", "start_date", "end_date", "repeat_cycle",
+            "repeat_weekdays", "broadcast_time", "channel_source",
+            "reminder_advance_minutes", "remark", "is_active"
+        ]
+        for field in updatable_fields:
+            if field in kwargs and kwargs[field] is not None:
+                setattr(schedule, field, kwargs[field])
+
+        if "suitable_listener_ids" in kwargs:
+            listener_ids = kwargs["suitable_listener_ids"] or []
+            listeners = User.objects.filter(
+                id__in=listener_ids,
+                family_group=schedule.family_group,
+                role="elderly"
+            )
+            schedule.suitable_listeners.set(listeners)
+
+        schedule.save()
+        return schedule
+
+    @staticmethod
+    def get_records_for_range(family_group_id, start_date, end_date, listener_id=None):
+        schedules = ListeningSchedule.objects.filter(
+            is_active=True,
+            family_group_id=family_group_id
+        )
+        records = []
+        for schedule in schedules:
+            listeners = schedule.suitable_listeners.all()
+            if listener_id:
+                listeners = listeners.filter(id=listener_id)
+            if not listeners.exists():
+                continue
+
+            dates = ListeningScheduleService.expand_schedule_dates(schedule, start_date, end_date)
+            for listener in listeners:
+                for d in dates:
+                    record, _ = ListeningRecord.objects.get_or_create(
+                        schedule=schedule,
+                        listen_date=d,
+                        listener=listener,
+                        defaults={"status": "pending"}
+                    )
+                    records.append(record)
+        return sorted(records, key=lambda r: (r.listen_date, r.schedule.broadcast_time))
+
+    @staticmethod
+    @transaction.atomic
+    def update_record_status(record, elderly_user, new_status, note=None, generate_excerpt=True):
+        if elderly_user.role != "elderly":
+            raise ValueError("只有老人可以更新收听状态")
+        if elderly_user.id != record.listener_id:
+            raise ValueError("只能更新自己的收听状态")
+
+        valid_transitions = {
+            "pending": {"listened", "skipped", "want_excerpt"},
+            "listened": {"pending", "skipped", "want_excerpt"},
+            "skipped": {"pending", "listened", "want_excerpt"},
+            "want_excerpt": {"pending", "listened", "skipped"},
+        }
+        if new_status not in valid_transitions.get(record.status, set()):
+            if new_status != record.status:
+                raise ValueError(f"不能从 {record.status} 转换到 {new_status}")
+
+        old_status = record.status
+        record.status = new_status
+        record.status_updated_at = timezone.now()
+        if note is not None:
+            record.note = note
+        record.save()
+
+        excerpt_draft = None
+        if new_status == "want_excerpt" and generate_excerpt:
+            if not record.excerpt_draft:
+                excerpt_draft = ListeningScheduleService._create_excerpt_draft(record, elderly_user)
+                record.excerpt_draft = excerpt_draft
+                record.save()
+            else:
+                excerpt_draft = record.excerpt_draft
+
+        follow_up_item = None
+        if new_status == "skipped":
+            missed = ListeningScheduleService.check_consecutive_missed(record.schedule, elderly_user)
+            if missed >= 3:
+                follow_up_item = ListeningScheduleService._generate_missed_followup(record, elderly_user, missed)
+
+        return record, excerpt_draft, follow_up_item
+
+    @staticmethod
+    def _create_excerpt_draft(record, user):
+        schedule = record.schedule
+        return ListeningExcerptDraft.objects.create(
+            schedule=schedule,
+            listen_date=record.listen_date,
+            program_name=schedule.program_name,
+            time_slot=schedule.broadcast_time,
+            channel_source=schedule.channel_source,
+            created_by=user,
+        )
+
+    @staticmethod
+    def check_consecutive_missed(schedule, listener):
+        today = timezone.now().date()
+        prior_records = ListeningRecord.objects.filter(
+            schedule=schedule,
+            listener=listener,
+            listen_date__lte=today,
+        ).order_by("-listen_date")
+
+        streak = 0
+        for r in prior_records:
+            if r.status == "skipped" or (r.listen_date < today and r.status == "pending"):
+                streak += 1
+            else:
+                break
+        return streak
+
+    @staticmethod
+    def _generate_missed_followup(record, elderly_user, streak_count):
+        schedule = record.schedule
+        family_group = schedule.family_group
+
+        assigned_to = None
+        if family_group:
+            family_members = User.objects.filter(
+                family_group=family_group,
+                role="family"
+            )
+            if family_members.exists():
+                assigned_to = family_members.first()
+
+        title = f"连续未收听提醒：{schedule.program_name}"
+        description = (
+            f"老人「{elderly_user.first_name or elderly_user.username}」已连续 {streak_count} 次未收听栏目「{schedule.program_name}」。\n"
+            f"\n"
+            f"栏目频道：{schedule.channel_source}\n"
+            f"播出时段：{schedule.broadcast_time}\n"
+            f"最近收听日期：{record.listen_date}\n"
+            f"\n"
+            f"请家属及时跟进，了解老人情况。"
+        )
+
+        existing = FollowUpItem.objects.filter(
+            listening_schedule=schedule,
+            source_type="listening_missed",
+            status__in=["pending", "in_progress"]
+        ).first()
+        if existing:
+            return existing
+
+        return FollowUpItem.objects.create(
+            title=title,
+            description=description,
+            status="pending",
+            priority="high",
+            source_type="listening_missed",
+            listening_schedule=schedule,
+            listening_record=record,
+            assigned_to=assigned_to,
+            due_date=(timezone.now() + timedelta(days=3)).date(),
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def convert_draft_to_excerpt(draft, user):
+        if draft.is_completed and draft.excerpt:
+            return draft.excerpt
+
+        if not draft.content_summary:
+            raise ValueError("请先填写内容摘要再转正")
+
+        excerpt = ProgramExcerpt.objects.create(
+            date=draft.listen_date,
+            program_name=draft.program_name,
+            time_slot=draft.time_slot,
+            content_summary=draft.content_summary,
+            elderly_notes=draft.elderly_notes,
+            topic=draft.topic,
+            created_by=user,
+        )
+
+        draft.excerpt = excerpt
+        draft.is_completed = True
+        draft.save()
+        return excerpt
+
+    @staticmethod
+    @transaction.atomic
+    def update_draft(draft, user, content_summary=None, elderly_notes=None, topic_id=None):
+        if content_summary is not None:
+            draft.content_summary = content_summary
+        if elderly_notes is not None:
+            draft.elderly_notes = elderly_notes
+        if topic_id is not None:
+            if topic_id:
+                try:
+                    draft.topic = Topic.objects.get(id=topic_id)
+                except Topic.DoesNotExist:
+                    raise ValueError("指定的专题不存在")
+            else:
+                draft.topic = None
+        draft.save()
+        return draft
+
+    @staticmethod
+    def get_consecutive_missed_list(family_group_id, min_streak=3):
+        schedules = ListeningSchedule.objects.filter(
+            is_active=True,
+            family_group_id=family_group_id
+        )
+        results = []
+        today = timezone.now().date()
+        for schedule in schedules:
+            for listener in schedule.suitable_listeners.all():
+                streak = ListeningScheduleService.check_consecutive_missed(schedule, listener)
+                if streak >= min_streak:
+                    latest = ListeningRecord.objects.filter(
+                        schedule=schedule,
+                        listener=listener
+                    ).order_by("-listen_date").first()
+                    results.append({
+                        "schedule_id": schedule.id,
+                        "program_name": schedule.program_name,
+                        "channel_source": schedule.channel_source,
+                        "broadcast_time": schedule.broadcast_time,
+                        "listener_id": listener.id,
+                        "listener_name": listener.first_name or listener.username,
+                        "listener_avatar": listener.avatar,
+                        "streak_count": streak,
+                        "latest_listen_date": latest.listen_date if latest else None,
+                    })
+        return sorted(results, key=lambda x: x["streak_count"], reverse=True)
+
+    @staticmethod
+    def get_schedule_statistics(family_group_id):
+        base_query = ListeningSchedule.objects.filter(family_group_id=family_group_id)
+        active_count = base_query.filter(is_active=True).count()
+        total_schedules = base_query.count()
+
+        today = timezone.now().date()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+
+        today_records = ListeningRecord.objects.filter(
+            schedule__family_group_id=family_group_id,
+            listen_date=today
+        )
+        today_total = today_records.count()
+        today_listened = today_records.filter(status="listened").count()
+        today_pending = today_records.filter(status="pending").count()
+
+        week_records = ListeningRecord.objects.filter(
+            schedule__family_group_id=family_group_id,
+            listen_date__gte=week_start,
+            listen_date__lte=week_end
+        )
+        week_total = week_records.count()
+        week_listened = week_records.filter(status="listened").count()
+        completion_rate = round(week_listened / week_total, 2) if week_total > 0 else 0
+
+        consecutive_skipped = ListeningScheduleService.get_consecutive_missed_list(
+            family_group_id, min_streak=2
+        )
+
+        channel_distribution = list(
+            base_query.filter(is_active=True)
+            .values("channel_source")
+            .annotate(count=Count("channel_source"))
+            .order_by("-count")
+        )
+        channel_distribution = [
+            {"channel": item["channel_source"], "count": item["count"]}
+            for item in channel_distribution
+        ]
+
+        return {
+            "total_schedules": total_schedules,
+            "active_schedules": active_count,
+            "today_total": today_total,
+            "today_pending": today_pending,
+            "today_listened": today_listened,
+            "week_total": week_total,
+            "week_listened": week_listened,
+            "completion_rate": completion_rate,
+            "consecutive_skipped": consecutive_skipped,
+            "channel_distribution": channel_distribution,
         }

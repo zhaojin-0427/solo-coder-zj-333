@@ -47,6 +47,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: '陪办计划详情' }
   },
   {
+    path: '/schedules',
+    name: 'schedules',
+    component: () => import('@/pages/SchedulePage.vue'),
+    meta: { requiresAuth: true, title: '收听日程' }
+  },
+  {
     path: '/family',
     name: 'family',
     component: () => import('@/pages/FamilyPage.vue'),

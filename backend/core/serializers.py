@@ -3,7 +3,8 @@ from accounts.serializers import UserSerializer
 from .models import (
     Topic, ProgramExcerpt, Version, Comment, FollowUpItem,
     ReviewPackage, ReviewPackageItem, ReviewPackageFeedback,
-    CompanionPlan, CompanionPlanMaterial
+    CompanionPlan, CompanionPlanMaterial,
+    ListeningSchedule, ListeningRecord, ListeningExcerptDraft
 )
 
 
@@ -601,6 +602,227 @@ class UpdateMaterialStatusSerializer(serializers.Serializer):
     is_prepared = serializers.BooleanField()
 
 
+class ListeningScheduleListSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+    suitable_listeners = UserSerializer(many=True, read_only=True)
+    suitable_listener_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        default=list
+    )
+    repeat_cycle_display = serializers.CharField(source="get_repeat_cycle_display", read_only=True)
+    reminder_advance_minutes_display = serializers.CharField(
+        source="get_reminder_advance_minutes_display",
+        read_only=True
+    )
+    record_count_today = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ListeningSchedule
+        fields = (
+            "id",
+            "program_name",
+            "start_date",
+            "end_date",
+            "repeat_cycle",
+            "repeat_cycle_display",
+            "repeat_weekdays",
+            "broadcast_time",
+            "channel_source",
+            "reminder_advance_minutes",
+            "reminder_advance_minutes_display",
+            "suitable_listeners",
+            "suitable_listener_ids",
+            "remark",
+            "is_active",
+            "created_by",
+            "created_by_name",
+            "record_count_today",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "created_by", "suitable_listeners", "record_count_today")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.first_name or obj.created_by.username
+
+    def get_record_count_today(self, obj):
+        from django.utils import timezone
+        today = timezone.now().date()
+        return obj.records.filter(listen_date=today).count()
+
+
+class ListeningScheduleDetailSerializer(ListeningScheduleListSerializer):
+    pass
+
+
+class ListeningScheduleCreateSerializer(serializers.Serializer):
+    program_name = serializers.CharField(max_length=200)
+    start_date = serializers.DateField()
+    end_date = serializers.DateField(required=False, allow_null=True)
+    repeat_cycle = serializers.ChoiceField(
+        choices=["once", "daily", "weekly", "biweekly", "monthly", "weekdays", "weekends"],
+        required=False,
+        default="once"
+    )
+    repeat_weekdays = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    broadcast_time = serializers.CharField(max_length=100)
+    channel_source = serializers.CharField(max_length=200)
+    reminder_advance_minutes = serializers.ChoiceField(
+        choices=[0, 5, 10, 15, 30, 60, 120, 1440],
+        required=False,
+        default=0
+    )
+    suitable_listener_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        default=list
+    )
+    remark = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    is_active = serializers.BooleanField(required=False, default=True)
+
+
+class ListeningScheduleUpdateSerializer(serializers.Serializer):
+    program_name = serializers.CharField(max_length=200, required=False)
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False, allow_null=True)
+    repeat_cycle = serializers.ChoiceField(
+        choices=["once", "daily", "weekly", "biweekly", "monthly", "weekdays", "weekends"],
+        required=False
+    )
+    repeat_weekdays = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    broadcast_time = serializers.CharField(max_length=100, required=False)
+    channel_source = serializers.CharField(max_length=200, required=False)
+    reminder_advance_minutes = serializers.ChoiceField(
+        choices=[0, 5, 10, 15, 30, 60, 120, 1440],
+        required=False
+    )
+    suitable_listener_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False
+    )
+    remark = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    is_active = serializers.BooleanField(required=False)
+
+
+class ListeningRecordSerializer(serializers.ModelSerializer):
+    schedule = ListeningScheduleListSerializer(read_only=True)
+    schedule_id = serializers.IntegerField(write_only=True, required=False)
+    listener = UserSerializer(read_only=True)
+    listener_name = serializers.SerializerMethodField(read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    excerpt_draft_id = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ListeningRecord
+        fields = (
+            "id",
+            "schedule",
+            "schedule_id",
+            "listen_date",
+            "status",
+            "status_display",
+            "listener",
+            "listener_name",
+            "note",
+            "excerpt_draft_id",
+            "status_updated_at",
+            "created_at",
+        )
+        read_only_fields = ("id", "created_at", "schedule", "listener", "status_updated_at")
+
+    def get_listener_name(self, obj):
+        return obj.listener.first_name or obj.listener.username
+
+    def get_excerpt_draft_id(self, obj):
+        return obj.excerpt_draft_id if obj.excerpt_draft else None
+
+
+class UpdateListeningRecordStatusSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=["pending", "listened", "skipped", "want_excerpt"])
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    generate_excerpt = serializers.BooleanField(required=False, default=True)
+
+
+class ListeningExcerptDraftSerializer(serializers.ModelSerializer):
+    schedule = ListeningScheduleListSerializer(read_only=True)
+    schedule_id = serializers.IntegerField(write_only=True, required=False)
+    topic = TopicSerializer(read_only=True)
+    topic_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    created_by = UserSerializer(read_only=True)
+    excerpt = ProgramExcerptListSerializer(read_only=True)
+    excerpt_id = serializers.SerializerMethodField(read_only=True)
+    status_display = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ListeningExcerptDraft
+        fields = (
+            "id",
+            "schedule",
+            "schedule_id",
+            "listen_date",
+            "program_name",
+            "time_slot",
+            "content_summary",
+            "elderly_notes",
+            "topic",
+            "topic_id",
+            "channel_source",
+            "created_by",
+            "excerpt",
+            "excerpt_id",
+            "is_completed",
+            "status_display",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id", "created_at", "updated_at", "schedule",
+            "created_by", "excerpt", "listen_date", "program_name", "time_slot", "channel_source"
+        )
+
+    def get_excerpt_id(self, obj):
+        return obj.excerpt_id if obj.excerpt else None
+
+    def get_status_display(self, obj):
+        if obj.is_completed:
+            return "已转正"
+        return "草稿中"
+
+
+class UpdateDraftSerializer(serializers.Serializer):
+    content_summary = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    elderly_notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    topic_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class ConsecutiveMissedItemSerializer(serializers.Serializer):
+    schedule_id = serializers.IntegerField()
+    program_name = serializers.CharField()
+    channel_source = serializers.CharField()
+    broadcast_time = serializers.CharField()
+    listener_id = serializers.IntegerField()
+    listener_name = serializers.CharField()
+    listener_avatar = serializers.CharField(allow_null=True)
+    streak_count = serializers.IntegerField()
+    latest_listen_date = serializers.DateField(allow_null=True)
+
+
+class ListeningScheduleStatsSerializer(serializers.Serializer):
+    total_schedules = serializers.IntegerField()
+    active_schedules = serializers.IntegerField()
+    today_total = serializers.IntegerField()
+    today_pending = serializers.IntegerField()
+    today_listened = serializers.IntegerField()
+    week_total = serializers.IntegerField()
+    week_listened = serializers.IntegerField()
+    completion_rate = serializers.FloatField()
+    consecutive_skipped = ConsecutiveMissedItemSerializer(many=True)
+    channel_distribution = serializers.ListField(child=serializers.DictField())
+
+
 class FollowUpItemSerializer(serializers.ModelSerializer):
     excerpt = ProgramExcerptListSerializer(read_only=True)
     excerpt_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
@@ -608,6 +830,10 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
     review_package_item_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     companion_plan = CompanionPlanListSerializer(read_only=True)
     companion_plan_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    listening_schedule = ListeningScheduleListSerializer(read_only=True)
+    listening_schedule_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    listening_record = ListeningRecordSerializer(read_only=True)
+    listening_record_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     assigned_to = UserSerializer(read_only=True)
     assigned_to_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
@@ -634,6 +860,10 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
             "review_package_item_id",
             "companion_plan",
             "companion_plan_id",
+            "listening_schedule",
+            "listening_schedule_id",
+            "listening_record",
+            "listening_record_id",
             "review_package",
             "assigned_to",
             "assigned_to_id",
@@ -641,7 +871,10 @@ class FollowUpItemSerializer(serializers.ModelSerializer):
             "due_date",
             "created_at",
         )
-        read_only_fields = ("id", "created_at", "excerpt", "review_package_item", "companion_plan", "review_package", "assigned_to", "source_type")
+        read_only_fields = (
+            "id", "created_at", "excerpt", "review_package_item", "companion_plan",
+            "review_package", "assigned_to", "source_type", "listening_schedule", "listening_record"
+        )
 
     def get_assigned_to_name(self, obj):
         if obj.assigned_to:

@@ -1,0 +1,112 @@
+import sys
+filepath = sys.argv[1]
+with open(filepath, "r") as f:
+    c = f.read()
+
+# 1. imports
+c = c.replace(
+    "import type { Statistics } from '@/types'
+import { statisticsApi } from '@/api'",
+    "import type { Statistics, ListeningScheduleStats } from '@/types'
+import { statisticsApi, scheduleApi } from '@/api'"
+)
+
+# 2. add listeningStats ref
+c = c.replace(
+    "const loading = ref(false)
+const exporting = ref(false)
+const statistics = ref<Statistics | null>(null)",
+    "const loading = ref(false)
+const exporting = ref(false)
+const statistics = ref<Statistics | null>(null)
+const listeningStats = ref<ListeningScheduleStats | null>(null)"
+)
+
+# 3. add channelChartRef
+c = c.replace(
+    "const topLocationsChartRef = ref8HTMLElement | null>(null)
+
+let barChart",
+    "const topLocationsChartRef = ref8HTMLElement | null>(null)
+const channelChartRef = ref8HTMLElement | null>(null)
+
+let barChart"
+)
+
+# 4. add channelChart variable
+c = c.replace(
+    "let topLocationsChart: echarts.ECharts | null = null
+
+const totalConfirmation",
+    "let topLocationsChart: echarts.ECharts | null = nulllet channelChart: echarts.ECharts | null = null
+
+const totalConfirmation"
+)
+
+# 5. listeningCompletionRate computed
+c = c.replace(
+    "const materialPreparedPercent = computed(() => {
+  return Math.round((statistics.value?.companionPlanStats?.materialPreparedRate || 0) * 100)
+})
+
+const initBarChart",
+    "const materialPreparedPercent = computed(() => {
+  return Math.round((statistics.value?.companionPlanStats?.materialPreparedRate || 0) * 100)
+})
+
+const listeningCompletionRate = computed(() => {
+  return Math.round((listeningStats.value?*.completionRate || 0) * 100)
+})
+
+const initBarChart"
+)
+
+# 6. update loadStatistics
+c = c.replace(
+    "const loadStatistics = async () => {
+  loading.value = true
+  try {
+    statistics.value = await statisticsApi.getStatistics()
+    initCharts()
+  } catch (error) {
+    console.error('Failed to load statistics:', error)
+  } finally {
+    loading.value = false
+  }
+}",
+    "const loadStatistics = async () => {
+  loading.value = true
+  try {
+    [statistics.value, listeningStats.value] = await Promise.all([
+      statisticsApi.getStatistics(),
+      scheduleApi.getStats()
+    ])
+    initCharts()
+  } catch (error) {
+    console.error('Failed to load statistics:', error)
+  } finally {
+    loading.value = false
+  }
+}"
+)
+
+# 7. update handleResize
+c = c.replace(
+    "  topLocationsChart?.resize()
+}",
+    "  topLocationsChart?.resize()
+  channelChart?.resize()
+}"
+)
+
+# 8. update onUnmountedB˜ÈHËœ™\XÙJBˆˆÜØØ][ÛœĞÚ\Ë™\ÜÜÙJ
+BŸJH‹BˆˆÜØØ][ÛœĞÚ\Ë™\ÜÜÙJ
+BˆÚ[›™[Ú\Ë™\ÜÜÙJ
+BŸJHƒBŠCBƒBˆÈKˆ\]H[š]Ú\ÃB˜ÈHËœ™\XÙJBˆˆ[š]ÜØØ][ÛœĞÚ\
+
+BˆJBŸH‹Bˆˆ[š]ÜØØ][ÛœĞÚ\
+
+Bˆ[š]Ú[›™[Ú\
+
+BˆJBŸHƒBŠCBƒBÚ]Ü[Šš[\]ÈŠH\ÈƒBˆ‹Üš]JÊCBœš[
+”\ÙHHÛ™

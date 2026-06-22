@@ -1,7 +1,9 @@
 from django.contrib import admin
 from .models import (
     Topic, ProgramExcerpt, Version, Comment, FollowUpItem,
-    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback
+    ReviewPackage, ReviewPackageItem, ReviewPackageFeedback,
+    CompanionPlan, CompanionPlanMaterial,
+    ListeningSchedule, ListeningRecord, ListeningExcerptDraft
 )
 
 
@@ -84,3 +86,43 @@ class ReviewPackageFeedbackAdmin(admin.ModelAdmin):
     list_filter = ("feedback_type", "created_at")
     search_fields = ("note",)
     raw_id_fields = ("package_item", "elderly_user")
+
+
+@admin.register(CompanionPlan)
+class CompanionPlanAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "status", "handle_location", "created_by", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("title", "handle_location")
+    raw_id_fields = ("source_excerpt", "source_topic", "companion_user", "created_by", "family_group")
+
+
+@admin.register(CompanionPlanMaterial)
+class CompanionPlanMaterialAdmin(admin.ModelAdmin):
+    list_display = ("id", "companion_plan", "name", "is_prepared", "order_index")
+    list_filter = ("is_prepared",)
+    search_fields = ("name", "description")
+    raw_id_fields = ("companion_plan", "prepared_by")
+
+
+@admin.register(ListeningSchedule)
+class ListeningScheduleAdmin(admin.ModelAdmin):
+    list_display = ("id", "program_name", "repeat_cycle", "broadcast_time", "channel_source", "is_active", "created_by", "created_at")
+    list_filter = ("repeat_cycle", "is_active", "created_at")
+    search_fields = ("program_name", "channel_source", "remark")
+    raw_id_fields = ("created_by", "family_group")
+
+
+@admin.register(ListeningRecord)
+class ListeningRecordAdmin(admin.ModelAdmin):
+    list_display = ("id", "schedule", "listen_date", "status", "listener", "created_at")
+    list_filter = ("status", "listen_date")
+    search_fields = ("note",)
+    raw_id_fields = ("schedule", "listener", "excerpt_draft")
+
+
+@admin.register(ListeningExcerptDraft)
+class ListeningExcerptDraftAdmin(admin.ModelAdmin):
+    list_display = ("id", "program_name", "listen_date", "is_completed", "created_by", "created_at")
+    list_filter = ("is_completed", "created_at")
+    search_fields = ("program_name", "content_summary", "elderly_notes")
+    raw_id_fields = ("schedule", "topic", "created_by", "excerpt")

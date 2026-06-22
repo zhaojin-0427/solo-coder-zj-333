@@ -36,6 +36,52 @@
       </div>
     </div>
 
+    <div v-if="consecutiveMissed.length > 0" class="mb-6">
+      <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-semibold">⚠️ 连续未收听栏目</h3>
+          </div>
+        </template>
+        <div class="space-y-3">
+          <div
+            v-for="item in consecutiveMissed"
+            :key="`${item.scheduleId}-${item.listenerId}`"
+            class="p-4 bg-red-50 border border-red-200 rounded-xl"
+          >
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <div class="flex flex-wrap items-center gap-3 mb-2">
+                  <span class="text-lg font-semibold text-red-700">📻 {{ item.programName }}</span>
+                  <el-tag type="danger" size="large" effect="light">
+                    🔥 连续跳过 {{ item.streakCount }} 次
+                  </el-tag>
+                </div>
+                <div class="flex flex-wrap gap-4 text-sm text-gray-600">
+                  <span>📺 频道：{{ item.channelSource }}</span>
+                  <span>⏰ 时间：{{ item.broadcastTime }}</span>
+                  <span>👤 收听人：{{ item.listenerAvatar || '👤' }} {{ item.listenerName }}</span>
+                  <span v-if="item.latestListenDate">
+                    📅 最近收听：{{ item.latestListenDate }}
+                  </span>
+                  <span v-else class="text-red-600">
+                    📅 最近收听：从未收听
+                  </span>
+                </div>
+              </div>
+              <el-button
+                type="danger"
+                size="large"
+                @click="handleCreateFollowupFromMissed(item)"
+              >
+                🔔 生成提醒事项
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
     <div v-if="loading" class="loading-container">
       <div class="text-gray-500 text-lg">⏳ 加载中...</div>
     </div>
@@ -101,6 +147,14 @@
               >
                 📋 材料确认提醒
               </el-tag>
+              <el-tag
+                v-if="item.sourceType === 'listening_missed'"
+                type="danger"
+                size="large"
+                effect="light"
+              >
+                ⚠️ 连续未收听提醒
+              </el-tag>
             </div>
 
             <p class="text-base text-gray-700 mb-3">{{ item.description }}</p>
@@ -118,9 +172,9 @@
             </div>
 
             <div
-              v-if="item.reviewPackage || item.excerpt || item.companionPlan"
+              v-if="item.reviewPackage || item.excerpt || item.companionPlan || item.listeningSchedule"
               class="mt-4 p-4 rounded-xl border-l-4"
-              :class="item.sourceType === 'confirmation' ? 'bg-orange-50 border-orange-400' : item.sourceType === 'review_package' ? 'bg-red-50 border-red-400' : (item.sourceType === 'companion_plan' || item.sourceType === 'companion_material') ? 'bg-blue-50 border-blue-400' : 'bg-orange-50 border-primary'"
+              :class="item.sourceType === 'confirmation' ? 'bg-orange-50 border-orange-400' : item.sourceType === 'review_package' ? 'bg-red-50 border-red-400' : (item.sourceType === 'companion_plan' || item.sourceType === 'companion_material') ? 'bg-blue-50 border-blue-400' : item.sourceType === 'listening_missed' ? 'bg-red-50 border-red-400' : 'bg-orange-50 border-primary'"
             >
               <div class="flex items-center gap-2 mb-2">
                 <p class="text-sm text-gray-500">
@@ -128,6 +182,7 @@
                   <span v-else-if="item.sourceType === 'review_package'">📚 来源资料包（讲解需求）</span>
                   <span v-else-if="item.sourceType === 'companion_plan'">🤝 来源陪办计划（陪同需求）</span>
                   <span v-else-if="item.sourceType === 'companion_material'">📋 来源陪办计划（材料确认）</span>
+                  <span v-else-if="item.sourceType === 'listening_missed'">⚠️ 来源收听日程（连续未收听）</span>
                   <span v-else>关联节目</span>
                 </p>
               </div>
@@ -151,7 +206,7 @@
                 </div>
               </div>
 
-              <div v-if="item.excerpt">
+              <div v-if="item.excerpt" class="mb-3">
                 <p class="text-base font-medium">📻 {{ item.excerpt.programName }}</p>
                 <p class="text-sm text-gray-600 mt-1 line-clamp-2">{{ item.excerpt.contentSummary }}</p>
                 <div class="flex items-center gap-2 mt-2">
@@ -164,6 +219,17 @@
                   >
                     {{ confirmationLabel(item.excerpt.confirmationStatus) }}
                   </el-tag>
+                </div>
+              </div>
+
+              <div v-if="item.listeningSchedule" class="p-3 bg-white rounded-lg">
+                <p class="text-base font-medium text-red-700">
+                  📻 {{ item.listeningSchedule.programName }}
+                </p>
+                <div class="flex flex-wrap gap-4 mt-2 text-sm text-gray-600">
+                  <span>📺 {{ item.listeningSchedule.channelSource }}</span>
+                  <span>⏰ {{ item.listeningSchedule.broadcastTime }}</span>
+                  <span>🔄 {{ item.listeningSchedule.repeatCycleDisplay }}</span>
                 </div>
               </div>
             </div>
@@ -325,12 +391,13 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
-import type { FollowUpItem, FamilyMember, ProgramExcerpt, UserInfo, CompanionPlan } from '@/types'
-import { followUpApi, familyApi, excerptApi, companionPlanApi } from '@/api'
+import type { FollowUpItem, FamilyMember, ProgramExcerpt, UserInfo, CompanionPlan, ConsecutiveMissedItem } from '@/types'
+import { followUpApi, familyApi, excerptApi, companionPlanApi, listeningStatsApi } from '@/api'
 
 const router = useRouter()
 
 const loading = ref(false)
+const loadingConsecutiveMissed = ref(false)
 const submitting = ref(false)
 const activeStatus = ref('')
 
@@ -338,6 +405,7 @@ const followUps = ref<FollowUpItem[]>([])
 const members = ref<FamilyMember[]>([])
 const excerpts = ref<ProgramExcerpt[]>([])
 const companionPlans = ref<CompanionPlan[]>([])
+const consecutiveMissed = ref<ConsecutiveMissedItem[]>([])
 
 const userMap = reactive<Record<number, FamilyMember>>({})
 
@@ -354,7 +422,9 @@ const formData = reactive({
   assignedTo: null as number | null,
   dueDate: today,
   excerptId: null as number | null,
-  companionPlanId: null as number | null
+  companionPlanId: null as number | null,
+  listeningScheduleId: null as number | null,
+  listeningRecordId: null as number | null
 })
 
 const formRules: FormRules = {
@@ -448,6 +518,17 @@ const loadFollowUps = async () => {
   }
 }
 
+const loadConsecutiveMissed = async () => {
+  loadingConsecutiveMissed.value = true
+  try {
+    consecutiveMissed.value = await listeningStatsApi.getConsecutiveMissed()
+  } catch (error) {
+    console.error('Failed to load consecutive missed:', error)
+  } finally {
+    loadingConsecutiveMissed.value = false
+  }
+}
+
 const loadMembers = async () => {
   try {
     members.value = await familyApi.getMembers()
@@ -494,6 +575,22 @@ const openAddDialog = () => {
   formData.dueDate = today
   formData.excerptId = null
   formData.companionPlanId = null
+  formData.listeningScheduleId = null
+  formData.listeningRecordId = null
+  addDialogVisible.value = true
+}
+
+const handleCreateFollowupFromMissed = (item: ConsecutiveMissedItem) => {
+  formData.title = `提醒${item.listenerName}收听${item.programName}`
+  formData.description = `已连续${item.streakCount}次未收听${item.programName}，请提醒老人收听或调整日程`
+  formData.priority = 'high'
+  formData.status = 'pending'
+  formData.assignedTo = members.value[0]?.id || null
+  formData.dueDate = today
+  formData.excerptId = null
+  formData.companionPlanId = null
+  formData.listeningScheduleId = item.scheduleId
+  formData.listeningRecordId = null
   addDialogVisible.value = true
 }
 
@@ -512,7 +609,9 @@ const handleSubmit = async () => {
           assignedToId: formData.assignedTo,
           dueDate: formData.dueDate,
           excerptId: formData.excerptId,
-          companionPlanId: formData.companionPlanId
+          companionPlanId: formData.companionPlanId,
+          listeningScheduleId: formData.listeningScheduleId,
+          listeningRecordId: formData.listeningRecordId
         })
         ElMessage.success('创建成功！')
         addDialogVisible.value = false
@@ -540,6 +639,7 @@ onMounted(() => {
   loadMembers()
   loadExcerpts()
   loadCompanionPlans()
+  loadConsecutiveMissed()
   loadFollowUps()
 })
 </script>

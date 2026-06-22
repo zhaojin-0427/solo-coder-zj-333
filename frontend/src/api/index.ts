@@ -18,7 +18,13 @@ import type {
   ReviewPackageFeedback,
   FeedItem,
   CompanionPlan,
-  CompanionPlanMaterial
+  CompanionPlanMaterial,
+  ListeningSchedule,
+  ListeningRecord,
+  ListeningExcerptDraft,
+  ConsecutiveMissedItem,
+  ListeningScheduleStats,
+  ListeningStatus
 } from '@/types'
 
 const baseURL = 'http://localhost:8000/api'
@@ -195,7 +201,7 @@ export const followUpApi = {
     return api.get(`/followups/${query}`)
   },
 
-  create: (data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null; companionPlanId?: number | null }): Promise<FollowUpItem> =>
+  create: (data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null; companionPlanId?: number | null; listeningScheduleId?: number | null; listeningRecordId?: number | null }): Promise<FollowUpItem> =>
     api.post('/followups/', {
       title: data.title,
       description: data.description,
@@ -204,11 +210,13 @@ export const followUpApi = {
       excerptId: data.excerptId,
       reviewPackageItemId: data.reviewPackageItemId,
       companionPlanId: data.companionPlanId,
+      listeningScheduleId: data.listeningScheduleId,
+      listeningRecordId: data.listeningRecordId,
       assignedToId: data.assignedToId ?? (typeof data.assignedTo === 'object' ? data.assignedTo?.id : data.assignedTo),
       dueDate: data.dueDate
     }),
 
-  update: (id: number, data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null; companionPlanId?: number | null }): Promise<FollowUpItem> =>
+  update: (id: number, data: Partial<FollowUpItem> & { assignedToId?: number | null; reviewPackageItemId?: number | null; companionPlanId?: number | null; listeningScheduleId?: number | null; listeningRecordId?: number | null }): Promise<FollowUpItem> =>
     api.put(`/followups/${id}/`, {
       title: data.title,
       description: data.description,
@@ -217,6 +225,8 @@ export const followUpApi = {
       excerptId: data.excerptId,
       reviewPackageItemId: data.reviewPackageItemId,
       companionPlanId: data.companionPlanId,
+      listeningScheduleId: data.listeningScheduleId,
+      listeningRecordId: data.listeningRecordId,
       assignedToId: data.assignedToId ?? (typeof data.assignedTo === 'object' ? data.assignedTo?.id : data.assignedTo),
       dueDate: data.dueDate
     }),
@@ -395,6 +405,107 @@ export const reviewPackageApi = {
 export const statisticsApi = {
   getStatistics: (): Promise<Statistics> =>
     api.get('/statistics/')
+}
+
+export const scheduleApi = {
+  getList: (isActive?: boolean): Promise<ListeningSchedule[]> => {
+    const query = isActive !== undefined ? `?is_active=${isActive}` : ''
+    return api.get(`/listening-schedules/${query}`)
+  },
+
+  getDetail: (id: number): Promise<ListeningSchedule> =>
+    api.get(`/listening-schedules/${id}/`),
+
+  create: (data: {
+    programName: string
+    startDate: string
+    endDate?: string | null
+    repeatCycle: 'once' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'weekdays' | 'weekends'
+    repeatWeekdays?: string | null
+    broadcastTime: string
+    channelSource: string
+    reminderAdvanceMinutes?: number
+    suitableListenerIds?: number[]
+    remark?: string | null
+  }): Promise<ListeningSchedule> =>
+    api.post('/listening-schedules/', data),
+
+  update: (id: number, data: {
+    programName?: string
+    startDate?: string
+    endDate?: string | null
+    repeatCycle?: 'once' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'weekdays' | 'weekends'
+    repeatWeekdays?: string | null
+    broadcastTime?: string
+    channelSource?: string
+    reminderAdvanceMinutes?: number
+    suitableListenerIds?: number[]
+    remark?: string | null
+    isActive?: boolean
+  }): Promise<ListeningSchedule> =>
+    api.put(`/listening-schedules/${id}/`, data),
+
+  remove: (id: number): Promise<void> =>
+    api.delete(`/listening-schedules/${id}/`),
+
+  getStats: (): Promise<ListeningScheduleStats> =>
+    api.get('/listening-schedules/stats/')
+}
+
+export const recordApi = {
+  getList: (): Promise<ListeningRecord[]> =>
+    api.get('/listening-records/'),
+
+  getRange: (startDate: string, endDate: string, listenerId?: number): Promise<ListeningRecord[]> => {
+    const params = new URLSearchParams()
+    params.append('start_date', startDate)
+    params.append('end_date', endDate)
+    if (listenerId) params.append('listener_id', listenerId.toString())
+    return api.get(`/listening-records/range/?${params.toString()}`)
+  },
+
+  getToday: (): Promise<ListeningRecord[]> =>
+    api.get('/listening-records/today/'),
+
+  getDetail: (id: number): Promise<ListeningRecord> =>
+    api.get(`/listening-records/${id}/`),
+
+  updateStatus: (id: number, data: {
+    newStatus: ListeningStatus
+    note?: string | null
+    generateExcerpt?: boolean
+  }): Promise<ListeningRecord> =>
+    api.post(`/listening-records/${id}/update-status/`, data)
+}
+
+export const draftApi = {
+  getList: (isCompleted?: boolean): Promise<ListeningExcerptDraft[]> => {
+    const query = isCompleted !== undefined ? `?is_completed=${isCompleted}` : ''
+    return api.get(`/listening-drafts/${query}`)
+  },
+
+  getDetail: (id: number): Promise<ListeningExcerptDraft> =>
+    api.get(`/listening-drafts/${id}/`),
+
+  update: (id: number, data: {
+    programName?: string
+    timeSlot?: string
+    contentSummary?: string | null
+    elderlyNotes?: string | null
+    topicId?: number | null
+    channelSource?: string | null
+  }): Promise<ListeningExcerptDraft> =>
+    api.put(`/listening-drafts/${id}/`, data),
+
+  convert: (id: number): Promise<ProgramExcerpt> =>
+    api.post(`/listening-drafts/${id}/convert/`)
+}
+
+export const listeningStatsApi = {
+  getConsecutiveMissed: (minStreak?: number): Promise<ConsecutiveMissedItem[]> => {
+    const query = minStreak !== undefined ? `?min_streak=${minStreak}` : ''
+    return api.get(`/listening/consecutive-missed/${query}`)
+  }
 }
 
 export default api

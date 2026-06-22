@@ -364,6 +364,186 @@ class CompanionPlanMaterial(models.Model):
         return f"{self.companion_plan.title} - {self.name}"
 
 
+class ListeningSchedule(models.Model):
+    REPEAT_CYCLE_CHOICES = (
+        ("once", "单次"),
+        ("daily", "每天"),
+        ("weekly", "每周"),
+        ("biweekly", "每两周"),
+        ("monthly", "每月"),
+        ("weekdays", "工作日"),
+        ("weekends", "周末"),
+    )
+
+    REMINDER_ADVANCE_CHOICES = (
+        (0, "不提醒"),
+        (5, "提前5分钟"),
+        (10, "提前10分钟"),
+        (15, "提前15分钟"),
+        (30, "提前30分钟"),
+        (60, "提前1小时"),
+        (120, "提前2小时"),
+        (1440, "提前1天"),
+    )
+
+    id = models.AutoField(primary_key=True)
+    program_name = models.CharField(max_length=200, verbose_name="栏目名称")
+    start_date = models.DateField(verbose_name="播出起始日期")
+    end_date = models.DateField(null=True, blank=True, verbose_name="播出结束日期")
+    repeat_cycle = models.CharField(
+        max_length=20,
+        choices=REPEAT_CYCLE_CHOICES,
+        default="once",
+        verbose_name="重复周期"
+    )
+    repeat_weekdays = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name="重复星期（逗号分隔，0-6代表周一到周日）"
+    )
+    broadcast_time = models.CharField(max_length=100, verbose_name="播出时段")
+    channel_source = models.CharField(max_length=200, verbose_name="频道来源")
+    reminder_advance_minutes = models.IntegerField(
+        choices=REMINDER_ADVANCE_CHOICES,
+        default=0,
+        verbose_name="提醒提前量（分钟）"
+    )
+    suitable_listeners = models.ManyToManyField(
+        "accounts.User",
+        related_name="listening_schedules",
+        verbose_name="适合收听人"
+    )
+    remark = models.TextField(blank=True, null=True, verbose_name="备注")
+    is_active = models.BooleanField(default=True, verbose_name="是否启用")
+    created_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="created_listening_schedules",
+        verbose_name="创建人（家属）"
+    )
+    family_group = models.ForeignKey(
+        "accounts.FamilyGroup",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="listening_schedules",
+        verbose_name="所属家庭组"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "listening_schedule"
+        verbose_name = "收听日程"
+        verbose_name_plural = "收听日程"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.program_name} - {self.broadcast_time}"
+
+
+class ListeningRecord(models.Model):
+    STATUS_CHOICES = (
+        ("pending", "待收听"),
+        ("listened", "已收听"),
+        ("skipped", "跳过"),
+        ("want_excerpt", "想补记摘录"),
+    )
+
+    id = models.AutoField(primary_key=True)
+    schedule = models.ForeignKey(
+        ListeningSchedule,
+        on_delete=models.CASCADE,
+        related_name="records",
+        verbose_name="关联收听日程"
+    )
+    listen_date = models.DateField(verbose_name="收听日期")
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pending",
+        verbose_name="收听状态"
+    )
+    listener = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="listening_records",
+        verbose_name="收听老人"
+    )
+    excerpt_draft = models.OneToOneField(
+        "ListeningExcerptDraft",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="listening_record",
+        verbose_name="关联摘录草稿"
+    )
+    note = models.TextField(blank=True, null=True, verbose_name="补充说明")
+    status_updated_at = models.DateTimeField(null=True, blank=True, verbose_name="状态更新时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        db_table = "listening_record"
+        verbose_name = "收听记录"
+        verbose_name_plural = "收听记录"
+        ordering = ["-listen_date", "-created_at"]
+        unique_together = [["schedule", "listen_date", "listener"]]
+
+    def __str__(self):
+        return f"{self.listen_date} - {self.schedule.program_name} - {self.get_status_display()}"
+
+
+class ListeningExcerptDraft(models.Model):
+    id = models.AutoField(primary_key=True)
+    schedule = models.ForeignKey(
+        ListeningSchedule,
+        on_delete=models.CASCADE,
+        related_name="excerpt_drafts",
+        verbose_name="关联收听日程"
+    )
+    listen_date = models.DateField(verbose_name="收听日期")
+    program_name = models.CharField(max_length=200, verbose_name="节目名称")
+    time_slot = models.CharField(max_length=100, verbose_name="时段")
+    content_summary = models.TextField(blank=True, null=True, verbose_name="内容摘要（草稿）")
+    elderly_notes = models.TextField(blank=True, null=True, verbose_name="老人补充笔记")
+    topic = models.ForeignKey(
+        Topic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="listening_drafts",
+        verbose_name="所属专题"
+    )
+    channel_source = models.CharField(max_length=200, blank=True, null=True, verbose_name="频道来源")
+    created_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="created_listening_drafts",
+        verbose_name="创建人"
+    )
+    excerpt = models.ForeignKey(
+        ProgramExcerpt,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_drafts",
+        verbose_name="已转正的节目摘录"
+    )
+    is_completed = models.BooleanField(default=False, verbose_name="是否已完成转正")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "listening_excerpt_draft"
+        verbose_name = "收听摘录草稿"
+        verbose_name_plural = "收听摘录草稿"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.listen_date} - {self.program_name}（草稿）"
+
+
 class FollowUpItem(models.Model):
     STATUS_CHOICES = (
         ("pending", "待处理"),
@@ -383,6 +563,7 @@ class FollowUpItem(models.Model):
         ("review_package", "资料包讲解需求"),
         ("companion_plan", "陪办计划陪同"),
         ("companion_material", "陪办计划材料确认"),
+        ("listening_missed", "连续未收听提醒"),
     )
 
     id = models.AutoField(primary_key=True)
@@ -414,6 +595,22 @@ class FollowUpItem(models.Model):
         blank=True,
         related_name="follow_up_items",
         verbose_name="关联陪办计划"
+    )
+    listening_schedule = models.ForeignKey(
+        ListeningSchedule,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="follow_up_items",
+        verbose_name="关联收听日程"
+    )
+    listening_record = models.ForeignKey(
+        ListeningRecord,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="follow_up_items",
+        verbose_name="关联收听记录"
     )
     assigned_to = models.ForeignKey(
         User,

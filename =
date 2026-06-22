@@ -1,0 +1,24 @@
+Script started on Mon Jun 22 00:44:30 2026
+Command: 
+import re
+
+fp = \"src/pages/Stats:script =  import re
+(\\\"1. initChannelChart added!\\\")
+else:
+    print(\\\"1. Could not find initCharts\\\")
+
+with open(fp, \\\"w\\\", encoding=\\\"utf-8\\\") as f:
+    f.write(c)
+print(\\\"Part 1 done!\\\")
+'''
+with open('p2_part1.py', 'w', encoding='utf-8') as f:
+    f.write(script)
+print('Script written')
+" && python3 p2_part1.py
+script: 
+import re
+
+fp = \"src/pages/Stats:script = : No such file or directory
+
+Command exit status: 1
+Script done on Mon Jun 22 00:44:30 2026

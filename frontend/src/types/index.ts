@@ -234,6 +234,97 @@ export interface CompanionPlanFeedItem {
   updatedAt: string
 }
 
+export type RepeatCycle = 'once' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'weekdays' | 'weekends'
+
+export type ListeningStatus = 'pending' | 'listened' | 'skipped' | 'want_excerpt'
+
+export interface ListeningSchedule {
+  id: number
+  programName: string
+  startDate: string
+  endDate: string | null
+  repeatCycle: RepeatCycle
+  repeatCycleDisplay: string
+  repeatWeekdays: string | null
+  broadcastTime: string
+  channelSource: string
+  reminderAdvanceMinutes: number
+  reminderAdvanceMinutesDisplay: string
+  suitableListeners: UserInfo[]
+  suitableListenerIds?: number[]
+  remark: string | null
+  isActive: boolean
+  createdBy: UserInfo | null
+  createdByName: string
+  recordCountToday: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ListeningRecord {
+  id: number
+  schedule: ListeningSchedule | null
+  scheduleId?: number
+  listenDate: string
+  status: ListeningStatus
+  statusDisplay: string
+  listener: UserInfo | null
+  listenerName: string
+  note: string | null
+  excerptDraftId: number | null
+  statusUpdatedAt: string | null
+  createdAt: string
+  generatedExcerptDraft?: ListeningExcerptDraft | null
+  generatedFollowup?: FollowUpItem | null
+}
+
+export interface ListeningExcerptDraft {
+  id: number
+  schedule: ListeningSchedule | null
+  scheduleId?: number
+  listenDate: string
+  programName: string
+  timeSlot: string
+  contentSummary: string | null
+  elderlyNotes: string | null
+  topic: Topic | null
+  topicId?: number | null
+  channelSource: string | null
+  createdBy: UserInfo | null
+  excerpt: ProgramExcerpt | null
+  excerptId: number | null
+  isCompleted: boolean
+  statusDisplay: string
+  createdAt: string
+  updatedAt: string
+  convertedExcerpt?: ProgramExcerpt | null
+}
+
+export interface ConsecutiveMissedItem {
+  scheduleId: number
+  programName: string
+  channelSource: string
+  broadcastTime: string
+  listenerId: number
+  listenerName: string
+  listenerAvatar: string | null
+  streakCount: number
+  latestListenDate: string | null
+}
+
+export interface ListeningScheduleStats {
+  totalSchedules: number
+  activeSchedules: number
+  todayTotal: number
+  todayPending: number
+  todayListened: number
+  weekTotal: number
+  weekListened: number
+  completionRate: number
+  consecutiveSkipped: ConsecutiveMissedItem[]
+  channelDistribution: { channel: string; count: number }[]
+}
+
 export interface FollowUpItem {
   id: number
   title: string
@@ -242,7 +333,7 @@ export interface FollowUpItem {
   statusDisplay: string
   priority: 'high' | 'medium' | 'low'
   priorityDisplay: string
-  sourceType: 'manual' | 'confirmation' | 'review_package' | 'companion_plan' | 'companion_material'
+  sourceType: 'manual' | 'confirmation' | 'review_package' | 'companion_plan' | 'companion_material' | 'listening_missed'
   sourceTypeDisplay: string
   excerpt: ProgramExcerpt | null
   excerptId?: number | null
@@ -250,6 +341,10 @@ export interface FollowUpItem {
   reviewPackageItemId?: number | null
   companionPlan: CompanionPlan | null
   companionPlanId?: number | null
+  listeningSchedule: ListeningSchedule | null
+  listeningScheduleId?: number | null
+  listeningRecord: ListeningRecord | null
+  listeningRecordId?: number | null
   reviewPackage: { id: number; title: string } | null
   assignedTo: UserInfo | null
   assignedToId?: number | null
@@ -329,3 +424,6 @@ export type FeedItem =
   | { type: 'review_package'; data: ReviewPackage; createdAt: string }
   | { type: 'review_package_feedback'; data: ReviewPackageFeedItem; createdAt: string }
   | { type: 'companion_plan'; data: CompanionPlan; activityInfo?: CompanionPlanFeedItem; createdAt: string }
+  | { type: 'listening_schedule'; data: ListeningSchedule; createdAt: string }
+  | { type: 'listening_record'; data: ListeningRecord; createdAt: string }
+  | { type: 'listening_draft'; data: ListeningExcerptDraft; createdAt: string }

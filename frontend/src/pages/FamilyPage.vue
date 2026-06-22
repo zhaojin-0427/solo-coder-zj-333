@@ -338,6 +338,146 @@
                   <p class="text-sm text-primary font-medium">点击查看详情 →</p>
                 </div>
               </el-card>
+
+              <el-card
+                v-else-if="item.type === 'listening_schedule'"
+                class="shadow-card-hover cursor-pointer"
+                :body-style="{ padding: '20px' }"
+                @click="router.push('/schedules')"
+              >
+                <div class="space-y-3">
+                  <div class="flex items-start justify-between">
+                    <div class="flex items-start gap-3">
+                      <span class="text-3xl">🗓️</span>
+                      <div>
+                        <div class="flex items-center gap-2 mb-1">
+                          <h3 class="text-xl font-semibold">{{ (item.data as any).programName }}</h3>
+                          <el-tag size="large" type="primary" effect="light">收听日程</el-tag>
+                        </div>
+                        <p class="text-sm text-gray-500">
+                          <span class="font-medium">{{ (item.data as any).createdByName }}</span>
+                          <span class="mx-2">·</span>
+                          创建于 {{ formatTime(item.createdAt) }}
+                        </p>
+                      </div>
+                    </div>
+                    <el-tag
+                      v-if="(item.data as any).isActive"
+                      size="large"
+                      type="success"
+                      effect="light"
+                    >
+                      启用中
+                    </el-tag>
+                    <el-tag v-else size="large" type="info" effect="light">
+                      已停用
+                    </el-tag>
+                  </div>
+                  <div class="flex flex-wrap gap-4 text-base text-gray-600">
+                    <span>🕐 {{ (item.data as any).broadcastTime }}</span>
+                    <span>📡 {{ (item.data as any).channelSource }}</span>
+                    <span>🔄 {{ (item.data as any).repeatCycleDisplay }}</span>
+                  </div>
+                  <p class="text-sm text-primary font-medium">点击查看所有收听日程 →</p>
+                </div>
+              </el-card>
+
+              <el-card
+                v-else-if="item.type === 'listening_record'"
+                class="shadow-card-hover cursor-pointer"
+                :body-style="{ padding: '20px' }"
+                @click="router.push('/schedules')"
+              >
+                <div class="space-y-3">
+                  <div class="flex items-start justify-between">
+                    <div class="flex items-start gap-3">
+                      <span class="text-3xl">
+                        {{ (item.data as any).status === 'listened' ? '✅' : (item.data as any).status === 'skipped' ? '⏭️' : (item.data as any).status === 'want_excerpt' ? '📝' : '⏳' }}
+                      </span>
+                      <div>
+                        <div class="flex items-center gap-2 mb-1">
+                          <h3 class="text-xl font-semibold">
+                            {{ (item.data as any).schedule?.programName || '收听记录' }}
+                          </h3>
+                          <el-tag
+                            size="large"
+                            effect="dark"
+                            :type="(item.data as any).status === 'listened' ? 'success' : (item.data as any).status === 'skipped' ? 'warning' : (item.data as any).status === 'want_excerpt' ? 'primary' : 'info'"
+                          >
+                            {{ (item.data as any).statusDisplay }}
+                          </el-tag>
+                        </div>
+                        <p class="text-sm text-gray-500">
+                          <span class="font-medium">{{ (item.data as any).listenerName }}</span>
+                          <span class="mx-2">·</span>
+                          {{ formatTime(item.createdAt) }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap gap-4 text-base text-gray-600">
+                    <span>📅 {{ (item.data as any).listenDate }}</span>
+                    <span>🕐 {{ (item.data as any).schedule?.broadcastTime }}</span>
+                    <span>📡 {{ (item.data as any).schedule?.channelSource }}</span>
+                  </div>
+                  <div v-if="(item.data as any).note" class="text-sm text-gray-600 bg-orange-50 p-3 rounded-lg">
+                    📝 {{ (item.data as any).note }}
+                  </div>
+                  <p class="text-sm text-primary font-medium">点击查看收听日程 →</p>
+                </div>
+              </el-card>
+
+              <el-card
+                v-else-if="item.type === 'listening_draft'"
+                class="shadow-card-hover cursor-pointer"
+                :body-style="{ padding: '20px' }"
+                @click="router.push('/')"
+              >
+                <div class="space-y-3">
+                  <div class="flex items-start justify-between">
+                    <div class="flex items-start gap-3">
+                      <span class="text-3xl">📝</span>
+                      <div>
+                        <div class="flex items-center gap-2 mb-1">
+                          <h3 class="text-xl font-semibold">{{ (item.data as any).programName }}</h3>
+                          <el-tag
+                            size="large"
+                            :type="(item.data as any).isCompleted ? 'success' : 'warning'"
+                            effect="light"
+                          >
+                            节目摘录草稿
+                          </el-tag>
+                        </div>
+                        <p class="text-sm text-gray-500">
+                          <span class="font-medium">{{ (item.data as any).createdBy?.firstName || '系统' }}</span>
+                          <span class="mx-2">·</span>
+                          创建于 {{ formatTime(item.createdAt) }}
+                        </p>
+                      </div>
+                    </div>
+                    <el-tag
+                      v-if="(item.data as any).isCompleted"
+                      size="large"
+                      type="success"
+                      effect="light"
+                    >
+                      已补全
+                    </el-tag>
+                    <el-tag v-else size="large" type="warning" effect="light">
+                      待补全
+                    </el-tag>
+                  </div>
+                  <div class="flex flex-wrap gap-4 text-base text-gray-600">
+                    <span>📅 {{ (item.data as any).listenDate }}</span>
+                    <span>🕐 {{ (item.data as any).timeSlot }}</span>
+                    <span v-if="(item.data as any).channelSource">📡 {{ (item.data as any).channelSource }}</span>
+                  </div>
+                  <div v-if="(item.data as any).contentSummary" class="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                    <span class="font-medium">内容摘要：</span>{{ (item.data as any).contentSummary }}
+                  </div>
+                  <p class="text-sm text-primary font-medium">点击前往节目摘录页补全 →</p>
+                </div>
+              </el-card>
             </div>
           </div>
         </div>

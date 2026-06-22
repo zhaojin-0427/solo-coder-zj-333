@@ -6,12 +6,75 @@
       <el-tag type="success" size="large" class="ml-2">
         共 {{ excerpts.length }} 条记录
       </el-tag>
+      <el-tag v-if="drafts.length > 0" type="warning" size="large" class="ml-2">
+        📝 {{ drafts.length }} 份草稿待补全
+      </el-tag>
     </h1>
 
-    <el-row :gutter="24">
+    <el-tabs v-model="excerptTab" type="card" size="large" class="mb-6">
+      <el-tab-pane label="📋 节目摘录列表" name="list" />
+      <el-tab-pane label="📝 待补全草稿" name="drafts">
+        <span class="text-red-500" v-if="drafts.length > 0">{{ drafts.length }}</span>
+      </el-tab-pane>
+    </el-tabs>
+
+    <div v-if="excerptTab === 'drafts'" class="mb-6">
+      <div v-if="loadingDrafts" class="loading-container py-8">
+        <div class="text-gray-500 text-lg">⏳ 加载中...</div>
+      </div>
+      <div v-else-if="drafts.length === 0" class="loading-container py-8">
+        <el-empty description="暂无待补全草稿" />
+      </div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <el-card
+          v-for="draft in drafts"
+          :key="draft.id"
+          class="shadow-card-hover"
+          :body-style="{ padding: '20px' }"
+        >
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xl font-semibold">{{ draft.programName }}</span>
+                <el-tag :type="draft.isCompleted ? 'success' : 'warning'" size="large" effect="light">
+                  {{ draft.statusDisplay }}
+                </el-tag>
+              </div>
+              <span class="text-sm text-gray-500">{{ draft.listenDate }}</span>
+            </div>
+            <div class="flex flex-wrap gap-2 text-sm text-gray-500">
+              <span>🕐 {{ draft.timeSlot }}</span>
+              <span v-if="draft.channelSource">📡 {{ draft.channelSource }}</span>
+            </div>
+            <div v-if="draft.contentSummary" class="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+              <span class="font-medium">内容摘要：</span>{{ draft.contentSummary }}
+            </div>
+            <div v-if="draft.elderlyNotes" class="text-sm text-gray-600 bg-orange-50 p-3 rounded-lg">
+              <span class="font-medium">老人的话：</span>{{ draft.elderlyNotes }}
+            </div>
+            <div class="flex gap-2 mt-3">
+              <el-button type="primary" size="large" @click="loadDraftForEdit(draft)">
+                ✏️ 继续补全
+              </el-button>
+              <el-button
+                v-if="!draft.isCompleted && draft.contentSummary"
+                type="success"
+                size="large"
+                :loading="convertingDraftId === draft.id"
+                @click="handleConvertDraft(draft)"
+              >
+                ✅ 转为正式摘录
+              </el-button>
+            </div>
+          </div>
+        </el-card>
+      </div>
+    </div>
+
+    <el-row v-if="excerptTab === 'list'" :gutter="24">
       <el-col :xs="24" :lg="8">
         <div class="form-section">
-          <h2 class="section-title">✏️ 录入节目</h2>
+          <h2 class="section-title">{{ editingDraftId ? '✏️ 补全草稿' : '✏️ 录入节目' }}</h2>
           <el-form
             ref="formRef"
             :model="formData"
@@ -343,20 +406,28 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import type { ProgramExcerpt, Topic } from '@/types'
-import { excerptApi, topicApi } from '@/api'
+import type { ProgramExcerpt, Topic, ListeningExcerptDraft } from '@/types'
+import { excerptApi, topicApi, draftApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 
+const route = useRoute()
 const userStore = useUserStore()
 const currentUserId = computed(() => userStore.user?.id)
 
+const excerptTab = ref('list')
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const loadingDrafts = ref(false)
 const submitting = ref(false)
 const deletingId = ref<number | null>(null)
 const editingId = ref<number | null>(null)
+const editingDraftId = ref<number | null>(null)
+const convertingDraftId = ref<number | null>(null)
+
+const drafts = ref<ListeningExcerptDraft[]>([])
 
 const excerpts = ref<ProgramExcerpt[]>([])
 const topics = ref<Topic[]>([])
@@ -443,6 +514,54 @@ const loadTopics = async () => {
   }
 }
 
+const loadDrafts = async () => {
+  loadingDrafts.value = true
+  try {
+    drafts.value = await draftApi.getList(false)
+  } catch (error) {
+    console.error('Failed to load drafts:', error)
+  } finally {
+    loadingDrafts.value = false
+  }
+}
+
+const loadDraftForEdit = (draft: ListeningExcerptDraft) => {
+  editingDraftId.value = draft.id
+  editingId.value = null
+  formData.date = draft.listenDate
+  formData.programName = draft.programName
+  formData.timeSlot = draft.timeSlot
+  formData.contentSummary = draft.contentSummary || ''
+  formData.elderlyNotes = draft.elderlyNotes || ''
+  formData.topicId = draft.topic ? draft.topic.id : null
+  excerptTab.value = 'list'
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const handleConvertDraft = async (draft: ListeningExcerptDraft) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要将草稿「${draft.programName}」转为正式摘录吗？`,
+      '转正确认',
+      {
+        confirmButtonText: '确定转正',
+        cancelButtonText: '取消',
+        type: 'success'
+      }
+    )
+    convertingDraftId.value = draft.id
+    const result = await draftApi.convert(draft.id)
+    ElMessage.success('已转为正式摘录！')
+    await Promise.all([loadDrafts(), loadExcerpts()])
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('Convert draft error:', error)
+    }
+  } finally {
+    convertingDraftId.value = null
+  }
+}
+
 const loadExcerpts = async () => {
   loading.value = true
   try {
@@ -466,7 +585,16 @@ const handleSubmit = async () => {
     if (valid) {
       submitting.value = true
       try {
-        if (editingId.value) {
+        if (editingDraftId.value) {
+          await draftApi.update(editingDraftId.value, {
+            programName: formData.programName,
+            timeSlot: formData.timeSlot,
+            contentSummary: formData.contentSummary,
+            elderlyNotes: formData.elderlyNotes,
+            topicId: formData.topicId
+          })
+          ElMessage.success('草稿更新成功！')
+        } else if (editingId.value) {
           await excerptApi.update(editingId.value, formData)
           ElMessage.success('修改成功！')
         } else {
@@ -475,6 +603,7 @@ const handleSubmit = async () => {
         }
         resetForm()
         loadExcerpts()
+        loadDrafts()
       } catch (error) {
         console.error('Submit error:', error)
       } finally {
@@ -559,6 +688,7 @@ const handleConfirm = async () => {
 
 const resetForm = () => {
   editingId.value = null
+  editingDraftId.value = null
   formData.date = today
   formData.programName = ''
   formData.timeSlot = ''
@@ -568,8 +698,23 @@ const resetForm = () => {
   formRef.value?.resetFields()
 }
 
-onMounted(() => {
-  loadTopics()
-  loadExcerpts()
+const checkQueryDraft = async () => {
+  const draftId = route.query.draftId
+  if (draftId) {
+    try {
+      const draft = await draftApi.getDetail(Number(draftId))
+      if (draft) {
+        loadDraftForEdit(draft)
+      }
+    } catch (error) {
+      console.error('Failed to load draft from query:', error)
+    }
+  }
+}
+
+onMounted(async () => {
+  await loadTopics()
+  await Promise.all([loadExcerpts(), loadDrafts()])
+  checkQueryDraft()
 })
 </script>

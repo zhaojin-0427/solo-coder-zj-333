@@ -93,6 +93,7 @@ const userStore = useUserStore()
 
 const navItems = [
   { path: '/', title: '节目摘录', icon: '📻' },
+  { path: '/schedules', title: '收听日程', icon: '🗓️' },
   { path: '/topics', title: '专题整理', icon: '📁' },
   { path: '/review-packages', title: '回听资料包', icon: '📚' },
   { path: '/companion-plans', title: '陪办计划', icon: '🤝' },

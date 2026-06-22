@@ -100,6 +100,33 @@
         </el-col>
       </el-row>
 
+      <el-row :gutter="24" class="mb-6">
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-blue">{{ listeningStats?.totalSchedules || 0 }}</div>
+            <div class="stat-label">📅 日程总数</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-yellow">{{ listeningStats?.todayPending || 0 }}</div>
+            <div class="stat-label">⏰ 今日待收听</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-green">{{ listeningCompletionRate }}%</div>
+            <div class="stat-label">✅ 收听完成率</div>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="6">
+          <div class="stat-card">
+            <div class="stat-number text-red-500">{{ listeningStats?.consecutiveSkipped?.length || 0 }}</div>
+            <div class="stat-label">🔥 连续跳过栏目</div>
+          </div>
+        </el-col>
+      </el-row>
+
       <el-row :gutter="24">
         <el-col :xs="24" :lg="12" class="mb-6">
           <el-card class="shadow-card" :body-style="{ padding: '24px' }">
@@ -247,6 +274,45 @@
             <div ref="topLocationsChartRef" class="chart-container"></div>
           </el-card>
         </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">📺 各频道订阅分布</h3>
+            </template>
+            <div ref="channelChartRef" class="chart-container"></div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12" class="mb-6">
+          <el-card class="shadow-card" :body-style="{ padding: '24px' }">
+            <template #header>
+              <h3 class="text-xl font-semibold">🔥 连续跳过栏目列表</h3>
+            </template>
+            <div v-if="!listeningStats?.consecutiveSkipped?.length" class="py-8">
+              <el-empty description="暂无连续跳过的栏目" :image-size="80" />
+            </div>
+            <div v-else class="space-y-3 max-h-80 overflow-y-auto">
+              <div
+                v-for="item in listeningStats.consecutiveSkipped"
+                :key="`${item.scheduleId}-${item.listenerId}`"
+                class="p-3 bg-red-50 border border-red-200 rounded-lg"
+              >
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-medium text-red-700">📻 {{ item.programName }}</span>
+                  <el-tag type="danger" size="small" effect="light">
+                    跳过 {{ item.streakCount }} 次
+                  </el-tag>
+                </div>
+                <div class="flex flex-wrap gap-3 text-sm text-gray-600">
+                  <span>📺 {{ item.channelSource }}</span>
+                  <span>⏰ {{ item.broadcastTime }}</span>
+                  <span>👤 {{ item.listenerName }}</span>
+                </div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
       </el-row>
     </div>
   </div>
@@ -255,13 +321,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
-import type { Statistics } from '@/types'
-import { statisticsApi } from '@/api'
+import type { Statistics, ListeningScheduleStats } from '@/types'
+import { statisticsApi, scheduleApi } from '@/api'
 import { ElMessage } from 'element-plus'
 
 const loading = ref(false)
 const exporting = ref(false)
 const statistics = ref<Statistics | null>(null)
+const listeningStats = ref<ListeningScheduleStats | null>(null)
 
 const barChartRef = ref<HTMLElement | null>(null)
 const pieChartRef = ref<HTMLElement | null>(null)
@@ -272,6 +339,7 @@ const packageTopicChartRef = ref<HTMLElement | null>(null)
 const feedbackChartRef = ref<HTMLElement | null>(null)
 const companionStatusChartRef = ref<HTMLElement | null>(null)
 const topLocationsChartRef = ref<HTMLElement | null>(null)
+const channelChartRef = ref<HTMLElement | null>(null)
 
 let barChart: echarts.ECharts | null = null
 let pieChart: echarts.ECharts | null = null
@@ -282,6 +350,7 @@ let packageTopicChart: echarts.ECharts | null = null
 let feedbackChart: echarts.ECharts | null = null
 let companionStatusChart: echarts.ECharts | null = null
 let topLocationsChart: echarts.ECharts | null = null
+let channelChart: echarts.ECharts | null = null
 
 const totalConfirmation = computed(() => {
   if (!statistics.value?.confirmationStatus) return 0
@@ -306,6 +375,10 @@ const needsVerificationPercent = computed(() => {
 
 const materialPreparedPercent = computed(() => {
   return Math.round((statistics.value?.companionPlanStats?.materialPreparedRate || 0) * 100)
+})
+
+const listeningCompletionRate = computed(() => {
+  return Math.round((listeningStats.value?.completionRate || 0) * 100)
 })
 
 const initBarChart = () => {
@@ -1009,7 +1082,75 @@ const initTopLocationsChart = () => {
     ]
   }
 
-  topLocationsChart.setOption(option)
+ topLocationsChart.setOption(option)
+}
+
+const initChannelChart = () => {
+  if (!channelChartRef.value || !listeningStats.value) return
+
+  if (channelChart) {
+    channelChart.dispose()
+  }
+
+  channelChart = echarts.init(channelChartRef.value)
+
+  const data = listeningStats.value.channelDistribution || []
+
+  const colors = ["#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de", "#3ba272", "#fc8452", "#9a60b4", "#ea7ccc"]
+
+  const option = {
+    tooltip: {
+      trigger: "item",
+      formatter: "{b}: {c} 个 ({d}%)"
+    },
+    legend: {
+      orient: "vertical",
+      right: "5%",
+      top: "center",
+      itemWidth: 20,
+      itemHeight: 20,
+      textStyle: {
+        fontSize: 14
+      }
+    },
+    series: [
+      {
+        name: "雱队师�!�",
+        type: "pie",
+        radius: ["40%", "70%"],
+        center: ["35%", "50%"],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: "#fff",
+          borderWidth: 2
+        },
+        label: {
+          show: false,
+          position: "center"
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 18,
+            fontWeight: "bold"
+          }
+        },
+        labelLine: {
+          show: false
+        },
+        data: data.length > 0 ? data.map((item, index) => ({
+          value: item.count,
+          name: item.channel,
+          itemStyle: {
+            color: colors[index % colors.length]
+          }
+        })) : [{ value: 0, name: "是札数据", itemStyle: { color: "#ccc" } }]
+      }
+    ]
+  };
+
+  channelChart.setOption(option)
 }
 
 const initCharts = () => {
@@ -1023,13 +1164,17 @@ const initCharts = () => {
     initFeedbackChart()
     initCompanionStatusChart()
     initTopLocationsChart()
+    initChannelChart()
   })
 }
 
 const loadStatistics = async () => {
   loading.value = true
   try {
-    statistics.value = await statisticsApi.getStatistics()
+    [statistics.value, listeningStats.value] = await Promise.all([
+      statisticsApi.getStatistics(),
+      scheduleApi.getStats()
+    ]) 
     initCharts()
   } catch (error) {
     console.error('Failed to load statistics:', error)
@@ -1052,6 +1197,7 @@ const handleResize = () => {
   feedbackChart?.resize()
   companionStatusChart?.resize()
   topLocationsChart?.resize()
+  channelChart?.resize()
 }
 
 watch(
@@ -1079,5 +1225,6 @@ onUnmounted(() => {
   feedbackChart?.dispose()
   companionStatusChart?.dispose()
   topLocationsChart?.dispose()
+  channelChart?.dispose()
 })
 </script>
